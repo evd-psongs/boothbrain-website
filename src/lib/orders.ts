@@ -1,5 +1,5 @@
 import { supabase } from '@/lib/supabase';
-import { ORDER_STATUSES, type Order, type OrderStatus } from '@/types/orders';
+import { ORDER_STATUSES, type Order, type OrderStatus, type PaymentMethod } from '@/types/orders';
 
 type OrderRow = {
   id: string;
@@ -42,6 +42,28 @@ const mapRowToOrder = (row: OrderRow): Order => ({
 type FetchOrdersInput = {
   userId: string;
   sessionId?: string | null;
+};
+
+type CreateOrderItemInput = {
+  itemId: string;
+  quantity: number;
+  priceCents: number;
+};
+
+type CreateOrderInput = {
+  userId: string;
+  sessionId?: string | null;
+  paymentMethod: PaymentMethod;
+  totalCents: number;
+  taxCents?: number;
+  taxRateBps?: number | null;
+  description?: string | null;
+  buyerName?: string | null;
+  buyerContact?: string | null;
+  depositTaken?: boolean;
+  status?: OrderStatus;
+  deviceId?: string | null;
+  lines: CreateOrderItemInput[];
 };
 
 export async function fetchOrders({ userId, sessionId = null }: FetchOrdersInput): Promise<Order[]> {
@@ -133,6 +155,79 @@ const adjustInventoryForOrder = async ({
     }
   }
 };
+
+export async function createOrder({
+  userId,
+  sessionId = null,
+  paymentMethod,
+  totalCents,
+  taxCents = 0,
+  taxRateBps = null,
+  description = null,
+  buyerName = null,
+  buyerContact = null,
+  depositTaken = false,
+  status = 'paid',
+  deviceId = null,
+  lines,
+}: CreateOrderInput): Promise<Order> {
+  if (!ORDER_STATUSES.includes(status)) {
+    throw new Error(`Invalid order status: ${status}`);
+  }
+
+  if (!lines.length) {
+    throw new Error('Cannot create an order without items.');
+  }
+
+  const { data, error } = await supabase
+    .from('orders')
+    .insert({
+      owner_user_id: userId,
+      session_id: sessionId,
+      event_id: sessionId,
+      payment_method: paymentMethod,
+      total_cents: totalCents,
+      tax_cents: taxCents,
+      tax_rate_bps: taxRateBps,
+      status,
+      buyer_name: buyerName,
+      buyer_contact: buyerContact,
+      description,
+      deposit_taken: depositTaken,
+      device_id: deviceId,
+      created_by: userId,
+    })
+    .select(
+      'id, owner_user_id, status, payment_method, total_cents, tax_cents, tax_rate_bps, event_id, buyer_name, buyer_contact, description, deposit_taken, device_id, created_at, updated_at',
+    )
+    .single();
+
+  if (error) {
+    throw error;
+  }
+
+  const orderRow = data as OrderRow;
+
+  const orderItemsPayload = lines.map((line) => ({
+    order_id: orderRow.id,
+    item_id: line.itemId,
+    quantity: line.quantity,
+    price_cents: line.priceCents,
+  }));
+
+  const { error: itemsError } = await supabase.from('order_items').insert(orderItemsPayload);
+
+  if (itemsError) {
+    await supabase.from('orders').delete().eq('id', orderRow.id).eq('owner_user_id', userId);
+    throw itemsError;
+  }
+
+  if (status === 'paid') {
+    await adjustInventoryForOrder({ userId, orderId: orderRow.id, adjustment: 'decrement' });
+  }
+
+  return mapRowToOrder(orderRow);
+}
 
 export async function updateOrderStatus({
   userId,

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 
 import { fetchOrders } from '@/lib/orders';
+import { supabase } from '@/lib/supabase';
 import type { Order } from '@/types/orders';
 
 export function useOrders(userId: string | null | undefined, sessionId?: string | null) {
@@ -43,6 +44,37 @@ export function useOrders(userId: string | null | undefined, sessionId?: string 
     void loadOrders({ signal: controller.signal });
     return () => controller.abort();
   }, [loadOrders]);
+
+  useEffect(() => {
+    if (!userId) return undefined;
+
+    const channel = supabase
+      .channel(`orders:${userId}:${sessionId ?? 'all'}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'orders',
+          filter: `owner_user_id=eq.${userId}`,
+        },
+        (payload) => {
+          if (sessionId) {
+            const newSession = (payload.new as { event_id?: string | null } | null)?.event_id;
+            const oldSession = (payload.old as { event_id?: string | null } | null)?.event_id;
+            if (newSession !== sessionId && oldSession !== sessionId) {
+              return;
+            }
+          }
+          void loadOrders();
+        },
+      )
+      .subscribe();
+
+    return () => {
+      void channel.unsubscribe();
+    };
+  }, [loadOrders, sessionId, userId]);
 
   const refresh = useCallback(async () => {
     await loadOrders();

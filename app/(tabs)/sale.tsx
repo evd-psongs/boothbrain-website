@@ -22,12 +22,15 @@ import { useFocusEffect, useRouter } from 'expo-router';
 
 import { useTheme } from '@/providers/ThemeProvider';
 import { useSupabaseAuth } from '@/providers/SupabaseAuthProvider';
+import { useSession } from '@/providers/SessionProvider';
+import { createOrder } from '@/lib/orders';
 import { useInventory } from '@/hooks/useInventory';
 import type { InventoryItem } from '@/types/inventory';
 import { formatCurrencyFromCents } from '@/utils/currency';
 import { fetchUserSettings, setUserSetting } from '@/lib/settings';
 import { getItemImagePublicUrl } from '@/lib/itemImages';
 import { useCartStore, type CartLine } from '@/state/cartStore';
+import type { PaymentMethod } from '@/types/orders';
 
 type FeedbackState = {
   type: 'success' | 'error' | 'info';
@@ -68,10 +71,34 @@ const DEFAULT_PAYMENT_SETTINGS: Record<(typeof PAYMENT_SETTING_KEYS)[number], st
   paypalQrUri: null,
 };
 
+type CheckoutMethod = 'square' | 'venmo' | 'cashapp' | 'paypal' | 'cash';
+
+const PAYMENT_METHOD_MAP: Record<CheckoutMethod, PaymentMethod> = {
+  cash: 'cash',
+  cashapp: 'cash_app',
+  paypal: 'paypal',
+  square: 'square',
+  venmo: 'venmo',
+};
+
+const PAYMENT_BUTTONS: Array<{
+  method: CheckoutMethod;
+  label: string;
+  icon: keyof typeof Feather.glyphMap;
+  tint: string;
+}> = [
+  { method: 'square', label: 'Square', icon: 'credit-card', tint: '#1F2933' },
+  { method: 'venmo', label: 'Venmo', icon: 'send', tint: '#3D95CE' },
+  { method: 'cashapp', label: 'Cash App', icon: 'smartphone', tint: '#00C244' },
+  { method: 'paypal', label: 'PayPal', icon: 'globe', tint: '#003087' },
+  { method: 'cash', label: 'Cash', icon: 'dollar-sign', tint: '#2DBA7F' },
+];
+
 export default function SaleScreen() {
   const { theme } = useTheme();
   const router = useRouter();
   const { user } = useSupabaseAuth();
+  const { currentSession } = useSession();
 
   const userId = user?.id ?? null;
   const { items, loading, error, refresh } = useInventory(userId);
@@ -82,6 +109,9 @@ export default function SaleScreen() {
   const [quantityModalVisible, setQuantityModalVisible] = useState(false);
   const [selectedItem, setSelectedItem] = useState<InventoryItem | null>(null);
   const [quantityInput, setQuantityInput] = useState('1');
+  const [isProcessingCheckout, setIsProcessingCheckout] = useState(false);
+  const [activePaymentMethod, setActivePaymentMethod] = useState<CheckoutMethod | null>(null);
+  const [deviceId, setDeviceId] = useState<string | null>(null);
 
   const [discountSelection, setDiscountSelection] = useState<DiscountSelection | null>(null);
   const [taxEnabled, setTaxEnabled] = useState(false);
@@ -91,6 +121,7 @@ export default function SaleScreen() {
   const [dismissedCallouts, setDismissedCallouts] = useState<string[]>([]);
   const [paypalModalVisible, setPayPalModalVisible] = useState(false);
   const settingsLoadedRef = useRef(false);
+  const [imagePreview, setImagePreview] = useState<{ uri: string; title: string } | null>(null);
 
   const cartLines = useCartStore((state) => state.lines);
   const addItemToCart = useCartStore((state) => state.addItem);
@@ -186,6 +217,24 @@ export default function SaleScreen() {
     AsyncStorage.setItem(CALL_OUT_DISMISSALS_KEY(userId), JSON.stringify(dismissedCallouts)).catch(() => {});
   }, [dismissedCallouts, userId]);
 
+  useEffect(() => {
+    let isMounted = true;
+    AsyncStorage.getItem('boothbrain_device_id')
+      .then((value) => {
+        if (isMounted && value) {
+          setDeviceId(value);
+        }
+      })
+      .catch(() => {
+        if (isMounted) {
+          setDeviceId(null);
+        }
+      });
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
 
   const filteredItems = useMemo(() => {
     if (!searchQuery.trim()) {
@@ -250,6 +299,20 @@ export default function SaleScreen() {
     [cartLines],
   );
 
+  const handleRemoveFromCart = useCallback(
+    (item: InventoryItem) => {
+      const line = cartLines.find((entry) => entry.item.id === item.id);
+      if (!line) return;
+      removeLine(item.id);
+      setFeedback({ type: 'success', message: `${item.name} removed from cart.` });
+    },
+    [cartLines, removeLine],
+  );
+
+  const handlePreviewImage = useCallback((item: InventoryItem, uri: string) => {
+    setImagePreview({ uri, title: item.name });
+  }, []);
+
   const handleApplyQuantity = useCallback(() => {
     if (!selectedItem) return;
     const quantity = Number.parseInt(quantityInput, 10);
@@ -300,109 +363,6 @@ export default function SaleScreen() {
     [userId],
   );
 
-  const handleCheckout = useCallback(
-    async (paymentMethod: 'square' | 'venmo' | 'cashapp' | 'paypal' | 'cash') => {
-      if (!cartLines.length) {
-        setFeedback({ type: 'info', message: 'Add items to the cart before checking out.' });
-        return;
-      }
-
-      const paymentUrlMap: Record<typeof paymentMethod, string | null> = {
-        square: paymentSettings.squareLink,
-        venmo: paymentSettings.venmoUsername
-          ? `https://venmo.com/${paymentSettings.venmoUsername.replace(/^@/, '')}`
-          : null,
-        cashapp: paymentSettings.cashAppTag
-          ? `https://cash.app/${paymentSettings.cashAppTag.replace(/^\$/, '')}`
-          : null,
-        paypal: paymentSettings.paypalQrUri ? 'paypal-qr' : 'paypal-manual',
-        cash: 'cash-offline',
-      };
-
-      const target = paymentUrlMap[paymentMethod];
-      if (!target) {
-        setFeedback({
-          type: 'error',
-          message: 'Add your payment details in Settings to use this method.',
-        });
-        return;
-      }
-
-      if (target === 'cash-offline') {
-        setFeedback({
-          type: 'info',
-          message: 'Record cash payments manually and mark the order paid.',
-        });
-      } else if (target === 'paypal-qr') {
-        setPayPalModalVisible(true);
-      } else if (target === 'paypal-manual') {
-        setFeedback({
-          type: 'info',
-          message: 'Collect PayPal payment manually and mark the order paid when finished.',
-        });
-      } else {
-        try {
-          const supported = await Linking.canOpenURL(target);
-          if (!supported) {
-            setFeedback({
-              type: 'error',
-              message: 'Payment app is not installed or the link is invalid.',
-            });
-            return;
-          }
-          await Linking.openURL(target);
-        } catch (err) {
-          console.warn('Failed to open payment link', err);
-          setFeedback({
-            type: 'error',
-            message: 'Could not open the payment app.',
-          });
-          return;
-        }
-      }
-
-      const orderSummary = cartLines
-        .map((line) => `${line.quantity} × ${line.item.name}`)
-        .join('\n');
-
-      try {
-        await Share.share({
-          title: 'BoothBrain Sale Summary',
-          message: `Order total: ${formatCurrencyFromCents(grandTotalCents)}\n\n${orderSummary}`,
-        });
-      } catch {
-        // ignore share errors
-      }
-
-      clearCart();
-      setDiscountSelection(null);
-      setCheckoutVisible(false);
-      setFeedback({ type: 'success', message: 'Cart cleared. Order saved locally.' });
-    },
-    [
-      cartLines,
-      paymentSettings.cashAppTag,
-      paymentSettings.paypalQrUri,
-      paymentSettings.squareLink,
-      paymentSettings.venmoUsername,
-      clearCart,
-      grandTotalCents,
-    ],
-  );
-
-  const cartSummaryLabel = useMemo(() => {
-    if (!cartLines.length) return 'Cart is empty';
-    return `${cartLines.length} item${cartLines.length === 1 ? '' : 's'} in cart`;
-  }, [cartLines.length]);
-
-  const firstPaypalImage = useMemo(() => {
-    if (!paymentSettings.paypalQrUri) return null;
-    if (paymentSettings.paypalQrUri.startsWith('data:')) {
-      return paymentSettings.paypalQrUri;
-    }
-    return `data:image/png;base64,${paymentSettings.paypalQrUri}`;
-  }, [paymentSettings.paypalQrUri]);
-
   const subtotalCents = cartSubtotalCents;
 
   const discountCents = useMemo(() => {
@@ -428,6 +388,194 @@ export default function SaleScreen() {
   }, [taxEnabled, subtotalAfterDiscount, parsedTaxRate]);
 
   const grandTotalCents = subtotalAfterDiscount + taxCents;
+
+  const buildOrderSummary = useCallback(() => {
+    const summaryLines = cartLines.map((line) => `${line.quantity} × ${line.item.name}`);
+    if (discountCents > 0) {
+      summaryLines.push(`Discount: -${formatCurrencyFromCents(discountCents, 'USD')}`);
+    }
+    if (taxCents > 0) {
+      summaryLines.push(`Tax: ${formatCurrencyFromCents(taxCents, 'USD')}`);
+    }
+    return summaryLines.join('\n');
+  }, [cartLines, discountCents, taxCents]);
+
+  const shareOrderSummary = useCallback(
+    async (summary: string) => {
+      if (!summary) return;
+      try {
+        await Share.share({
+          title: 'BoothBrain Sale Summary',
+          message: `Order total: ${formatCurrencyFromCents(grandTotalCents, 'USD')}\n\n${summary}`,
+        });
+      } catch {
+        // ignore share errors
+      }
+    },
+    [grandTotalCents],
+  );
+
+  const handleCheckout = useCallback(
+    async (paymentMethod: CheckoutMethod) => {
+      if (!cartLines.length) {
+        setFeedback({ type: 'info', message: 'Add items to the cart before checking out.' });
+        return;
+      }
+      if (!userId) {
+        setFeedback({ type: 'error', message: 'Sign in to record a sale.' });
+        return;
+      }
+      if (isProcessingCheckout) return;
+
+      setIsProcessingCheckout(true);
+      setActivePaymentMethod(paymentMethod);
+
+      const isCashPayment = paymentMethod === 'cash';
+      const paymentUrlMap: Record<CheckoutMethod, string | null> = {
+        square: paymentSettings.squareLink,
+        venmo: paymentSettings.venmoUsername
+          ? `https://venmo.com/${paymentSettings.venmoUsername.replace(/^@/, '')}`
+          : null,
+        cashapp: paymentSettings.cashAppTag
+          ? `https://cash.app/${paymentSettings.cashAppTag.replace(/^\$/, '')}`
+          : null,
+        paypal: paymentSettings.paypalQrUri ? 'paypal-qr' : 'paypal-manual',
+        cash: 'cash-offline',
+      };
+
+      const target = paymentUrlMap[paymentMethod];
+
+      try {
+        if (!isCashPayment) {
+          if (!target) {
+            setFeedback({
+              type: 'error',
+              message: 'Add your payment details in Settings to use this method.',
+            });
+            return;
+          }
+
+          if (target === 'paypal-qr') {
+            setPayPalModalVisible(true);
+          } else if (target === 'paypal-manual') {
+            setFeedback({
+              type: 'info',
+              message: 'Collect PayPal payment manually and mark the order paid when finished.',
+            });
+          } else {
+            try {
+              const supported = await Linking.canOpenURL(target);
+              if (!supported) {
+                setFeedback({
+                  type: 'error',
+                  message: 'Payment app is not installed or the link is invalid.',
+                });
+                return;
+              }
+              await Linking.openURL(target);
+            } catch (err) {
+              console.warn('Failed to open payment link', err);
+              setFeedback({
+                type: 'error',
+                message: 'Could not open the payment app.',
+              });
+              return;
+            }
+          }
+        }
+
+        const summary = buildOrderSummary();
+        const orderLines = cartLines
+          .filter((line) => line.quantity > 0)
+          .map((line) => ({
+            itemId: line.item.id,
+            quantity: line.quantity,
+            priceCents: line.item.priceCents,
+          }));
+
+        if (!orderLines.length) {
+          setFeedback({ type: 'error', message: 'Unable to record an empty order.' });
+          return;
+        }
+
+        const taxRateBps = parsedTaxRate > 0 ? Math.round(parsedTaxRate * 100) : null;
+
+        try {
+          await createOrder({
+            userId,
+            sessionId: currentSession?.eventId ?? null,
+            paymentMethod: PAYMENT_METHOD_MAP[paymentMethod],
+            totalCents: grandTotalCents,
+            taxCents,
+            taxRateBps,
+            description: summary || null,
+            deviceId: deviceId ?? null,
+            status: 'paid',
+            lines: orderLines,
+          });
+        } catch (err: any) {
+          console.warn('Failed to record order', err);
+          setFeedback({
+            type: 'error',
+            message: err?.message ?? 'Failed to record order. Try again.',
+          });
+          return;
+        }
+
+        if (!isCashPayment) {
+          await shareOrderSummary(summary);
+        }
+
+        clearCart();
+        setDiscountSelection(null);
+        setCheckoutVisible(false);
+        void refresh();
+        setFeedback({
+          type: 'success',
+          message: isCashPayment
+            ? 'Cash sale recorded. Order saved to history.'
+            : 'Sale recorded. Order saved to history.',
+        });
+      } finally {
+        setIsProcessingCheckout(false);
+        setActivePaymentMethod(null);
+      }
+    },
+    [
+      cartLines,
+      currentSession?.eventId,
+      deviceId,
+      paymentSettings.cashAppTag,
+      paymentSettings.paypalQrUri,
+      paymentSettings.squareLink,
+      paymentSettings.venmoUsername,
+      clearCart,
+      grandTotalCents,
+      parsedTaxRate,
+      setDiscountSelection,
+      shareOrderSummary,
+      buildOrderSummary,
+      setCheckoutVisible,
+      setFeedback,
+      taxCents,
+      refresh,
+      userId,
+      isProcessingCheckout,
+    ],
+  );
+
+  const cartSummaryLabel = useMemo(() => {
+    if (!cartLines.length) return 'Cart is empty';
+    return `${cartLines.length} item${cartLines.length === 1 ? '' : 's'} in cart`;
+  }, [cartLines.length]);
+
+  const firstPaypalImage = useMemo(() => {
+    if (!paymentSettings.paypalQrUri) return null;
+    if (paymentSettings.paypalQrUri.startsWith('data:')) {
+      return paymentSettings.paypalQrUri;
+    }
+    return `data:image/png;base64,${paymentSettings.paypalQrUri}`;
+  }, [paymentSettings.paypalQrUri]);
 
   useEffect(() => {
     if (cartCount === 0 && discountSelection) {
@@ -490,6 +638,8 @@ export default function SaleScreen() {
               inCartQuantity={cartLines.find((line) => line.item.id === item.id)?.quantity ?? 0}
               onAdd={() => handleAddToCart(item)}
               onAdjust={() => handleOpenQuantity(item)}
+              onRemove={() => handleRemoveFromCart(item)}
+              onPreviewImage={(uri) => handlePreviewImage(item, uri)}
             />
           )}
           contentContainerStyle={styles.listContent}
@@ -519,13 +669,15 @@ export default function SaleScreen() {
           ListFooterComponent={<View style={{ height: 120 }} />}
         />
 
-        <CartSummaryBar
-          themeColors={theme.colors}
-          label={cartSummaryLabel}
-          subtotal={grandTotalCents}
-          disabled={!cartLines.length}
-          onPress={() => setCheckoutVisible(true)}
-        />
+        {cartLines.length ? (
+          <CartSummaryBar
+            themeColors={theme.colors}
+            label={cartSummaryLabel}
+            subtotal={grandTotalCents}
+            disabled={false}
+            onPress={() => setCheckoutVisible(true)}
+          />
+        ) : null}
 
         <CheckoutModal
           visible={checkoutVisible}
@@ -546,7 +698,8 @@ export default function SaleScreen() {
           onToggleTax={handleToggleTax}
           onTaxRateChange={handleTaxRateChange}
           onCheckout={handleCheckout}
-          isProcessing={false}
+          isProcessing={isProcessingCheckout}
+          processingMethod={activePaymentMethod}
           paymentSettings={paymentSettings}
         />
 
@@ -579,6 +732,24 @@ export default function SaleScreen() {
                   Upload your PayPal QR code in Settings to display it here.
                 </Text>
               )}
+            </View>
+          </View>
+        </Modal>
+
+        <Modal visible={Boolean(imagePreview)} transparent animationType="fade" onRequestClose={() => setImagePreview(null)}>
+          <View style={styles.modalOverlay}>
+            <View style={[styles.previewCard, { backgroundColor: theme.colors.surface }]}>
+              <View style={styles.modalHeader}>
+                <Text style={[styles.modalTitle, { color: theme.colors.textPrimary }]} numberOfLines={2}>
+                  {imagePreview?.title ?? 'Item image'}
+                </Text>
+                <Pressable onPress={() => setImagePreview(null)} hitSlop={12}>
+                  <Feather name="x" size={18} color={theme.colors.textMuted} />
+                </Pressable>
+              </View>
+              {imagePreview ? (
+                <Image source={{ uri: imagePreview.uri }} style={styles.previewImage} resizeMode="contain" />
+              ) : null}
             </View>
           </View>
         </Modal>
@@ -651,12 +822,16 @@ function InventoryListItem({
   inCartQuantity,
   onAdd,
   onAdjust,
+  onRemove,
+  onPreviewImage,
 }: {
   item: InventoryItem;
   themeColors: ReturnType<typeof useTheme>['theme']['colors'];
   inCartQuantity: number;
   onAdd: () => void;
   onAdjust: () => void;
+  onRemove: () => void;
+  onPreviewImage?: (uri: string) => void;
 }) {
   const firstImagePath = item.imagePaths?.[0] ?? null;
   const imageUri = firstImagePath ? getItemImagePublicUrl(firstImagePath) : null;
@@ -680,11 +855,18 @@ function InventoryListItem({
       </View>
 
       {imageUri ? (
-        <Image source={{ uri: imageUri }} style={styles.itemImage} resizeMode="cover" />
+        <Pressable
+          onPress={() => onPreviewImage?.(imageUri)}
+          style={{ borderRadius: 12, overflow: 'hidden' }}
+          accessibilityRole="imagebutton"
+          accessibilityLabel={`View ${item.name} image`}
+        >
+          <Image source={{ uri: imageUri }} style={styles.itemImage} resizeMode="cover" />
+        </Pressable>
       ) : null}
 
       <View style={styles.itemFooter}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+        <View style={styles.itemStatusRow}>
           <StatusPill
             label={outOfStock ? 'Out of stock' : `${item.quantity} in stock`}
             tone={outOfStock ? 'error' : lowStock ? 'warning' : 'default'}
@@ -698,7 +880,7 @@ function InventoryListItem({
             />
           ) : null}
         </View>
-        <View style={{ flexDirection: 'row', gap: 8 }}>
+        <View style={styles.itemActionRow}>
           <Pressable
             onPress={onAdjust}
             style={({ pressed }) => [
@@ -708,6 +890,17 @@ function InventoryListItem({
           >
             <Text style={[styles.secondaryButtonText, { color: themeColors.textPrimary }]}>Adjust</Text>
           </Pressable>
+          {inCartQuantity > 0 ? (
+            <Pressable
+              onPress={onRemove}
+              style={({ pressed }) => [
+                styles.secondaryButton,
+                { borderColor: themeColors.error, opacity: pressed ? 0.8 : 1 },
+              ]}
+            >
+              <Text style={[styles.secondaryButtonText, { color: themeColors.error }]}>Remove</Text>
+            </Pressable>
+          ) : null}
           <Pressable
             onPress={onAdd}
             style={({ pressed }) => [
@@ -808,6 +1001,7 @@ function CheckoutModal({
   onTaxRateChange,
   onCheckout,
   isProcessing,
+  processingMethod,
   paymentSettings,
 }: {
   visible: boolean;
@@ -827,10 +1021,37 @@ function CheckoutModal({
   onRemoveLine: (itemId: string) => void;
   onToggleTax: (value: boolean) => void;
   onTaxRateChange: (value: string) => void;
-  onCheckout: (method: 'square' | 'venmo' | 'cashapp' | 'paypal' | 'cash') => void;
+  onCheckout: (method: CheckoutMethod) => void;
   isProcessing: boolean;
+  processingMethod: CheckoutMethod | null;
   paymentSettings: Record<(typeof PAYMENT_SETTING_KEYS)[number], string | null>;
 }) {
+  const paymentOptions = useMemo(
+    () =>
+      PAYMENT_BUTTONS.map((button) => {
+        let disabled = false;
+        if (button.method === 'square') {
+          disabled = !paymentSettings.squareLink;
+        } else if (button.method === 'venmo') {
+          disabled = !paymentSettings.venmoUsername;
+        } else if (button.method === 'cashapp') {
+          disabled = !paymentSettings.cashAppTag;
+        } else if (button.method === 'paypal') {
+          disabled = !paymentSettings.paypalQrUri;
+        }
+        return {
+          ...button,
+          disabled,
+        };
+      }),
+    [
+      paymentSettings.cashAppTag,
+      paymentSettings.paypalQrUri,
+      paymentSettings.squareLink,
+      paymentSettings.venmoUsername,
+    ],
+  );
+
   return (
     <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
       <SafeAreaView style={[styles.checkoutContainer, { backgroundColor: themeColors.background }]}>
@@ -982,53 +1203,20 @@ function CheckoutModal({
                 <Text style={[styles.sectionTitle, { color: themeColors.textPrimary }]}>
                   Take payment
                 </Text>
-                <View style={styles.paymentButtonRow}>
-                  <PaymentButton
-                    label="Square"
-                    icon="external-link"
-                    onPress={() => onCheckout('square')}
-                    themeColors={themeColors}
-                    disabled={!paymentSettings.squareLink}
-                  />
-                  <PaymentButton
-                    label="Venmo"
-                    icon="external-link"
-                    onPress={() => onCheckout('venmo')}
-                    themeColors={themeColors}
-                    disabled={!paymentSettings.venmoUsername}
-                  />
+                <View style={styles.paymentButtonGrid}>
+                  {paymentOptions.map((option) => (
+                    <PaymentButton
+                      key={option.method}
+                      label={option.label}
+                      icon={option.icon}
+                      onPress={() => onCheckout(option.method)}
+                      themeColors={themeColors}
+                      disabled={option.disabled || isProcessing}
+                      tintColor={option.tint}
+                      loading={isProcessing && processingMethod === option.method}
+                    />
+                  ))}
                 </View>
-                <View style={styles.paymentButtonRow}>
-                  <PaymentButton
-                    label="Cash App"
-                    icon="external-link"
-                    onPress={() => onCheckout('cashapp')}
-                    themeColors={themeColors}
-                    disabled={!paymentSettings.cashAppTag}
-                  />
-                  <PaymentButton
-                    label="PayPal"
-                    icon="image"
-                    onPress={() => onCheckout('paypal')}
-                    themeColors={themeColors}
-                    disabled={!paymentSettings.paypalQrUri}
-                  />
-                </View>
-                <Pressable
-                  onPress={() => onCheckout('cash')}
-                  style={({ pressed }) => [
-                    styles.secondaryButton,
-                    {
-                      borderColor: themeColors.border,
-                      opacity: pressed ? 0.85 : 1,
-                      paddingVertical: 14,
-                    },
-                  ]}
-                >
-                  <Text style={[styles.secondaryButtonText, { color: themeColors.textPrimary }]}>
-                    Cash / Other payment
-                  </Text>
-                </Pressable>
               </View>
             </>
           ) : (
@@ -1041,38 +1229,6 @@ function CheckoutModal({
           )}
         </ScrollView>
 
-        <View style={styles.checkoutFooter}>
-          <Pressable
-            onPress={onClose}
-            style={({ pressed }) => [
-              styles.checkoutSecondary,
-              { borderColor: themeColors.border, opacity: pressed ? 0.8 : 1 },
-            ]}
-          >
-            <Text style={[styles.checkoutSecondaryText, { color: themeColors.textPrimary }]}>
-              Keep selling
-            </Text>
-          </Pressable>
-          <Pressable
-            onPress={() => onCheckout('cash')}
-            disabled={!lines.length || isProcessing}
-            style={({ pressed }) => [
-              styles.checkoutPrimary,
-              {
-                backgroundColor: themeColors.primary,
-                opacity: pressed || isProcessing || !lines.length ? 0.7 : 1,
-              },
-            ]}
-          >
-            {isProcessing ? (
-              <ActivityIndicator color={themeColors.surface} />
-            ) : (
-              <Text style={[styles.checkoutPrimaryText, { color: themeColors.surface }]}>
-                Complete sale
-              </Text>
-            )}
-          </Pressable>
-        </View>
       </SafeAreaView>
     </Modal>
   );
@@ -1117,13 +1273,22 @@ function PaymentButton({
   onPress,
   disabled,
   themeColors,
+  tintColor,
+  loading,
 }: {
   label: string;
   icon: keyof typeof Feather.glyphMap;
   onPress: () => void;
   disabled?: boolean;
   themeColors: ReturnType<typeof useTheme>['theme']['colors'];
+  tintColor?: string;
+  loading?: boolean;
 }) {
+  const hasTint = Boolean(tintColor);
+  const backgroundColor = hasTint ? tintColor! : themeColors.surface;
+  const textColor = hasTint ? themeColors.surface : themeColors.textPrimary;
+  const borderColor = hasTint ? 'transparent' : themeColors.border;
+
   return (
     <Pressable
       onPress={onPress}
@@ -1131,13 +1296,18 @@ function PaymentButton({
       style={({ pressed }) => [
         styles.paymentButton,
         {
-          borderColor: themeColors.border,
-          opacity: disabled ? 0.4 : pressed ? 0.85 : 1,
+          backgroundColor,
+          borderColor,
+          opacity: disabled ? 0.35 : pressed ? 0.85 : 1,
         },
       ]}
     >
-      <Feather name={icon} size={16} color={themeColors.textPrimary} />
-      <Text style={[styles.paymentButtonText, { color: themeColors.textPrimary }]}>{label}</Text>
+      {loading ? (
+        <ActivityIndicator size="small" color={textColor} />
+      ) : (
+        <Feather name={icon} size={16} color={textColor} />
+      )}
+      <Text style={[styles.paymentButtonText, { color: textColor }]}>{label}</Text>
     </Pressable>
   );
 }
@@ -1322,9 +1492,14 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(9, 10, 15, 0.05)',
   },
   itemFooter: {
+    flexDirection: 'column',
+    gap: 12,
+  },
+  itemStatusRow: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
+    flexWrap: 'wrap',
     alignItems: 'center',
+    gap: 8,
   },
   primaryButton: {
     borderRadius: 999,
@@ -1344,6 +1519,13 @@ const styles = StyleSheet.create({
   secondaryButtonText: {
     fontSize: 13,
     fontWeight: '600',
+  },
+  itemActionRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'flex-end',
+    gap: 8,
+    alignSelf: 'stretch',
   },
   statusPill: {
     borderRadius: 999,
@@ -1504,15 +1686,18 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
   },
-  paymentButtonRow: {
+  paymentButtonGrid: {
     flexDirection: 'row',
     gap: 12,
+    flexWrap: 'wrap',
   },
   paymentButton: {
-    flex: 1,
+    flexGrow: 1,
+    flexBasis: '48%',
     borderWidth: 1,
     borderRadius: 12,
     paddingVertical: 12,
+    paddingHorizontal: 16,
     alignItems: 'center',
     justifyContent: 'center',
     flexDirection: 'row',
@@ -1521,35 +1706,6 @@ const styles = StyleSheet.create({
   paymentButtonText: {
     fontSize: 14,
     fontWeight: '600',
-  },
-  checkoutFooter: {
-    position: 'absolute',
-    left: 20,
-    right: 20,
-    bottom: 20,
-    flexDirection: 'row',
-    gap: 12,
-  },
-  checkoutSecondary: {
-    flex: 1,
-    borderWidth: 1,
-    borderRadius: 14,
-    paddingVertical: 14,
-    alignItems: 'center',
-  },
-  checkoutSecondaryText: {
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  checkoutPrimary: {
-    flex: 1,
-    borderRadius: 14,
-    paddingVertical: 14,
-    alignItems: 'center',
-  },
-  checkoutPrimaryText: {
-    fontSize: 14,
-    fontWeight: '700',
   },
   emptyCartContainer: {
     borderWidth: 1,
@@ -1583,6 +1739,19 @@ const styles = StyleSheet.create({
   paypalImage: {
     width: '100%',
     height: 280,
+    borderRadius: 12,
+    backgroundColor: 'rgba(9, 10, 15, 0.08)',
+  },
+  previewCard: {
+    width: '100%',
+    borderRadius: 20,
+    padding: 20,
+    gap: 16,
+    maxHeight: '90%',
+  },
+  previewImage: {
+    width: '100%',
+    height: 320,
     borderRadius: 12,
     backgroundColor: 'rgba(9, 10, 15, 0.08)',
   },

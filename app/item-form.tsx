@@ -195,7 +195,8 @@ export default function ItemFormScreen() {
     if (image.uploading) return;
     setImages((prev) => prev.filter((img) => img.id !== image.id));
     if (image.path) {
-      setRemovedImagePaths((prev) => [...prev, image.path]);
+      const path = image.path;
+      setRemovedImagePaths((prev) => [...prev, path]);
     }
   }, []);
 
