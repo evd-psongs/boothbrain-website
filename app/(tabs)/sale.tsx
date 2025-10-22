@@ -581,7 +581,7 @@ export default function SaleScreen() {
     if (cartCount === 0 && discountSelection) {
       setDiscountSelection(null);
     }
-  }, [cartCount, discountSelection]);
+  }, [cartCount, discountSelection, setDiscountSelection]);
 
   return (
     <SafeAreaView style={[styles.safeArea, { backgroundColor: theme.colors.background }]}>
@@ -608,7 +608,28 @@ export default function SaleScreen() {
           </View>
         ) : null}
 
-        <Text style={[styles.pageTitle, { color: theme.colors.textPrimary }]}>Sale</Text>
+        <View style={styles.headerContainer}>
+          <View style={styles.headerRow}>
+            <View style={styles.headerTitleGroup}>
+              <Feather
+                name="shopping-bag"
+                size={18}
+                color={theme.colors.primary}
+                style={{ marginRight: 8 }}
+              />
+              <Text style={[styles.pageTitle, { color: theme.colors.textPrimary }]}>Sale</Text>
+            </View>
+            <StatusPill
+              label={currentSession ? 'Live session' : 'Single device'}
+              tone={currentSession ? 'info' : 'default'}
+              themeColors={theme.colors}
+            />
+          </View>
+          <View style={styles.headerSubtitleRow}>
+            <Text style={[styles.headerSubtitle, { color: theme.colors.textSecondary }]}>Ring up orders and take payment.</Text>
+          </View>
+          <View style={[styles.headerAccent, { backgroundColor: theme.colors.primary }]} />
+        </View>
 
         <View style={styles.searchContainer}>
           <Feather name="search" size={16} color={theme.colors.textMuted} style={{ marginRight: 4 }} />
@@ -1426,10 +1447,35 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     textDecorationLine: 'underline',
   },
+  headerContainer: {
+    marginBottom: 16,
+    gap: 8,
+  },
+  headerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+  },
+  headerTitleGroup: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
   pageTitle: {
     fontSize: 24,
     fontWeight: '700',
-    marginBottom: 12,
+  },
+  headerSubtitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  headerSubtitle: {
+    fontSize: 14,
+  },
+  headerAccent: {
+    height: 4,
+    borderRadius: 999,
+    width: 56,
   },
   searchContainer: {
     flexDirection: 'row',
