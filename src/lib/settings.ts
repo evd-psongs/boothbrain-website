@@ -1,18 +1,6 @@
 import { supabase } from '@/lib/supabase';
 
-const SETTINGS_TABLE = 'settings';
-
-const userPrefix = (userId: string) => `user:${userId}:`;
-
-const buildStorageKey = (userId: string, key: string) => `${userPrefix(userId)}${key}`;
-
-const stripStorageKey = (userId: string, storageKey: string) => {
-  const prefix = userPrefix(userId);
-  if (storageKey.startsWith(prefix)) {
-    return storageKey.slice(prefix.length);
-  }
-  return storageKey;
-};
+const SETTINGS_TABLE = 'user_settings';
 
 export async function fetchUserSettings(
   userId: string,
@@ -22,11 +10,11 @@ export async function fetchUserSettings(
     return {};
   }
 
-  const storageKeys = keys.map((key) => buildStorageKey(userId, key));
   const { data, error } = await supabase
     .from(SETTINGS_TABLE)
     .select('key, value')
-    .in('key', storageKeys);
+    .eq('user_id', userId)
+    .in('key', keys);
 
   if (error) {
     throw error;
@@ -39,22 +27,24 @@ export async function fetchUserSettings(
   });
 
   (data ?? []).forEach((row: { key: string; value: string | null }) => {
-    const normalizedKey = stripStorageKey(userId, row.key);
-    result[normalizedKey] = row.value ?? null;
+    result[row.key] = row.value ?? null;
   });
 
   return result;
 }
 
 export async function setUserSetting(userId: string, key: string, value: string): Promise<void> {
-  const storageKey = buildStorageKey(userId, key);
   const { error } = await supabase
     .from(SETTINGS_TABLE)
-    .upsert({
-      key: storageKey,
-      value,
-      updated_at: new Date().toISOString(),
-    });
+    .upsert(
+      {
+        user_id: userId,
+        key,
+        value,
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: 'user_id,key' },
+    );
 
   if (error) {
     throw error;
@@ -62,8 +52,11 @@ export async function setUserSetting(userId: string, key: string, value: string)
 }
 
 export async function deleteUserSetting(userId: string, key: string): Promise<void> {
-  const storageKey = buildStorageKey(userId, key);
-  const { error } = await supabase.from(SETTINGS_TABLE).delete().eq('key', storageKey);
+  const { error } = await supabase
+    .from(SETTINGS_TABLE)
+    .delete()
+    .eq('user_id', userId)
+    .eq('key', key);
 
   if (error) {
     throw error;
