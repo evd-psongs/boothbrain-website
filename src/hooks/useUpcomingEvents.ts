@@ -15,6 +15,7 @@ export type EventChecklistItem = {
   id: string;
   title: string;
   done: boolean;
+  phase: 'prep' | 'live' | 'post';
 };
 
 const STORAGE_KEY = (userId: string) => `home_upcoming_events_${userId}`;
@@ -40,15 +41,18 @@ export function useUpcomingEvents(userId: string | null | undefined) {
         if (Array.isArray(parsed)) {
           setEvents(
             parsed.map((event) => {
-              if (event.startDateISO && event.endDateISO) {
-                return event;
-              }
-              const legacyDate = (event as { dateISO?: string | null | undefined }).dateISO;
-              const fallback = legacyDate ?? new Date().toISOString();
+              const startDateISO = event.startDateISO ?? (event as { dateISO?: string | null }).dateISO ?? new Date().toISOString();
+              const endDateISO = event.endDateISO ?? startDateISO;
               return {
                 ...event,
-                startDateISO: fallback,
-                endDateISO: fallback,
+                startDateISO,
+                endDateISO,
+                checklist: Array.isArray(event.checklist)
+                  ? event.checklist.map((item) => ({
+                      ...item,
+                      phase: (item as EventChecklistItem).phase ?? 'prep',
+                    }))
+                  : [],
               };
             }),
           );
