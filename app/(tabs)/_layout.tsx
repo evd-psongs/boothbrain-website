@@ -4,6 +4,7 @@ import { Feather } from '@expo/vector-icons';
 import { useTheme } from '@/providers/ThemeProvider';
 
 const TAB_ICON_MAP = {
+  home: 'home',
   sale: 'shopping-bag',
   inventory: 'box',
   orders: 'shopping-bag',
@@ -32,6 +33,7 @@ export default function TabsLayout() {
         },
       })}
     >
+      <Tabs.Screen name="home" options={{ title: 'Home' }} />
       <Tabs.Screen name="sale" options={{ title: 'Sale' }} />
       <Tabs.Screen name="inventory" options={{ title: 'Inventory' }} />
       <Tabs.Screen name="orders" options={{ title: 'Orders' }} />
