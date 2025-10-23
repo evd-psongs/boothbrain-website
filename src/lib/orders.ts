@@ -1,5 +1,11 @@
 import { supabase } from '@/lib/supabase';
-import { ORDER_STATUSES, type Order, type OrderStatus, type PaymentMethod } from '@/types/orders';
+import {
+  ORDER_STATUSES,
+  type Order,
+  type OrderItemSummary,
+  type OrderStatus,
+  type PaymentMethod,
+} from '@/types/orders';
 
 type OrderRow = {
   id: string;
@@ -17,6 +23,23 @@ type OrderRow = {
   device_id: string | null;
   created_at: string | null;
   updated_at: string | null;
+};
+
+type OrderItemRow = {
+  order_id: string | null;
+  item_id: string | null;
+  quantity: number | null;
+  price_cents: number | null;
+  items?:
+    | {
+        name: string | null;
+        sku: string | null;
+      }
+    | {
+        name: string | null;
+        sku: string | null;
+      }[]
+    | null;
 };
 
 const mapRowToOrder = (row: OrderRow): Order => ({
@@ -39,10 +62,28 @@ const mapRowToOrder = (row: OrderRow): Order => ({
   updatedAt: row.updated_at,
 });
 
+const mapOrderItems = (items: OrderItemRow[] | null | undefined): OrderItemSummary[] => {
+  if (!items?.length) return [];
+  return items.map((item) => ({
+    orderId: item.order_id ?? '',
+    itemId: item.item_id,
+    quantity: typeof item.quantity === 'number' ? item.quantity : 0,
+    priceCents: typeof item.price_cents === 'number' ? item.price_cents : 0,
+    itemName: Array.isArray(item.items)
+      ? item.items[0]?.name ?? null
+      : item.items?.name ?? null,
+    itemSku: Array.isArray(item.items)
+      ? item.items[0]?.sku ?? null
+      : item.items?.sku ?? null,
+  }));
+};
+
 type FetchOrdersInput = {
   userId: string;
   sessionId?: string | null;
 };
+
+type FetchOrderSummariesInput = FetchOrdersInput;
 
 type CreateOrderItemInput = {
   itemId: string;
@@ -85,6 +126,33 @@ export async function fetchOrders({ userId, sessionId = null }: FetchOrdersInput
   }
 
   return ((data ?? []) as OrderRow[]).map(mapRowToOrder);
+}
+
+export async function fetchOrderSummaries({ userId, sessionId = null }: FetchOrderSummariesInput): Promise<Order[]> {
+  let query = supabase
+    .from('orders')
+    .select(
+      `id, owner_user_id, status, payment_method, total_cents, tax_cents, tax_rate_bps, event_id, buyer_name, buyer_contact, description, deposit_taken, device_id, created_at, updated_at,
+      order_items(order_id, item_id, quantity, price_cents, items(name, sku))`,
+    )
+    .eq('owner_user_id', userId);
+
+  query = query.eq('status', 'paid');
+
+  if (sessionId) {
+    query = query.eq('event_id', sessionId);
+  }
+
+  const { data, error } = await query.order('created_at', { ascending: false });
+
+  if (error) {
+    throw error;
+  }
+
+  return ((data ?? []) as (OrderRow & { order_items?: OrderItemRow[] })[]).map((row) => ({
+    ...mapRowToOrder(row),
+    items: mapOrderItems(row.order_items ?? []),
+  }));
 }
 
 type InventoryAdjustment = 'increment' | 'decrement';

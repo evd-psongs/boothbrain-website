@@ -4,6 +4,15 @@ export type OrderStatus = (typeof ORDER_STATUSES)[number];
 export const PAYMENT_METHODS = ['cash', 'square', 'stripe', 'venmo', 'cash_app', 'paypal'] as const;
 export type PaymentMethod = (typeof PAYMENT_METHODS)[number];
 
+export type OrderItemSummary = {
+  orderId: string;
+  itemId: string | null;
+  quantity: number;
+  priceCents: number;
+  itemName: string | null;
+  itemSku: string | null;
+};
+
 export type Order = {
   id: string;
   ownerUserId: string;
@@ -20,4 +29,5 @@ export type Order = {
   deviceId: string | null;
   createdAt: string | null;
   updatedAt: string | null;
+  items?: OrderItemSummary[];
 };

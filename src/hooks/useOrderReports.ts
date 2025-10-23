@@ -1,0 +1,90 @@
+import { useCallback, useEffect, useState } from 'react';
+
+import { fetchOrderSummaries } from '@/lib/orders';
+import { supabase } from '@/lib/supabase';
+import type { Order } from '@/types/orders';
+
+export function useOrderReports(userId: string | null | undefined, sessionId?: string | null) {
+  const [orders, setOrders] = useState<Order[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const loadOrders = useCallback(
+    async (options?: { signal?: AbortSignal }) => {
+      if (!userId) {
+        setOrders([]);
+        setLoading(false);
+        setError(null);
+        return;
+      }
+
+      setLoading(true);
+      setError(null);
+
+      try {
+        const data = await fetchOrderSummaries({ userId, sessionId: sessionId ?? null });
+        if (!options?.signal?.aborted) {
+          setOrders(data);
+        }
+      } catch (err: any) {
+        if (!options?.signal?.aborted) {
+          setError(err?.message ?? 'Failed to load orders.');
+        }
+      } finally {
+        if (!options?.signal?.aborted) {
+          setLoading(false);
+        }
+      }
+    },
+    [sessionId, userId],
+  );
+
+  useEffect(() => {
+    const controller = new AbortController();
+    void loadOrders({ signal: controller.signal });
+    return () => controller.abort();
+  }, [loadOrders]);
+
+  useEffect(() => {
+    if (!userId) return undefined;
+
+    const channel = supabase
+      .channel(`reports-orders:${userId}:${sessionId ?? 'all'}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'orders',
+          filter: `owner_user_id=eq.${userId}`,
+        },
+        (payload) => {
+          if (sessionId) {
+            const newSession = (payload.new as { event_id?: string | null } | null)?.event_id;
+            const oldSession = (payload.old as { event_id?: string | null } | null)?.event_id;
+            if (newSession !== sessionId && oldSession !== sessionId) {
+              return;
+            }
+          }
+          void loadOrders();
+        },
+      )
+      .subscribe();
+
+    return () => {
+      void channel.unsubscribe();
+    };
+  }, [loadOrders, sessionId, userId]);
+
+  const refresh = useCallback(async () => {
+    await loadOrders();
+  }, [loadOrders]);
+
+  return {
+    orders,
+    loading,
+    error,
+    refresh,
+  };
+}
+
