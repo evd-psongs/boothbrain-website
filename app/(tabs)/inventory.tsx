@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
+  Alert,
   FlatList,
   Modal,
   Pressable,
@@ -22,9 +23,14 @@ import { useTheme } from '@/providers/ThemeProvider';
 import { useSupabaseAuth } from '@/providers/SupabaseAuthProvider';
 import { useSession } from '@/providers/SessionProvider';
 import { useInventory } from '@/hooks/useInventory';
-import type { InventoryItem } from '@/types/inventory';
+import { useEventStagedInventory } from '@/hooks/useEventStagedInventory';
+import { useUpcomingEvents, type UpcomingEvent } from '@/hooks/useUpcomingEvents';
+import type { EventStagedInventoryItem, InventoryItem } from '@/types/inventory';
 import { buildInventoryCsv, parseInventoryCsv } from '@/utils/inventoryCsv';
 import { createInventoryItem, updateInventoryItem } from '@/lib/inventory';
+import { updateEventStagedInventoryStatus, loadStagedInventoryItems } from '@/lib/eventStagedInventory';
+import { formatCurrencyFromCents } from '@/utils/currency';
+import { StagedInventoryModal } from '@/components/StagedInventoryModal';
 
 type FeedbackState = {
   type: 'success' | 'error' | 'info';
@@ -41,6 +47,20 @@ type SummaryStat = {
   subtle: string;
   subtleActive: string;
   filter: SummaryFilter;
+};
+
+const formatEventRange = (startISO: string, endISO: string) => {
+  try {
+    const start = new Date(startISO);
+    const end = new Date(endISO);
+    if (Number.isNaN(start.getTime())) return endISO;
+    if (Number.isNaN(end.getTime())) return start.toLocaleDateString();
+    const startLabel = start.toLocaleDateString();
+    const endLabel = end.toLocaleDateString();
+    return startLabel === endLabel ? startLabel : `${startLabel} → ${endLabel}`;
+  } catch {
+    return startISO;
+  }
 };
 
 type InventoryListItemProps = {
@@ -71,9 +91,17 @@ export default function InventoryScreen() {
   const [importOptionsVisible, setImportOptionsVisible] = useState(false);
   const [googleSheetUrl, setGoogleSheetUrl] = useState('');
   const [importError, setImportError] = useState<string | null>(null);
+  const [stagedModalEventId, setStagedModalEventId] = useState<string | null>(null);
 
   const userId = user?.id ?? null;
   const { items, loading, error, refresh } = useInventory(userId);
+  const {
+    stagedByEvent,
+    loading: loadingStaged,
+    error: stagedError,
+    refresh: refreshStaged,
+  } = useEventStagedInventory(userId);
+  const { events: upcomingEvents } = useUpcomingEvents(userId);
 
   useEffect(() => {
     if (!feedback) return;
@@ -87,12 +115,19 @@ export default function InventoryScreen() {
     }
   }, [error]);
 
+  useEffect(() => {
+    if (stagedError) {
+      setFeedback({ type: 'error', message: stagedError });
+    }
+  }, [stagedError]);
+
   useFocusEffect(
     useCallback(() => {
       if (!userId) return undefined;
       void refresh();
+      void refreshStaged();
       return undefined;
-    }, [refresh, userId]),
+    }, [refresh, refreshStaged, userId]),
   );
 
   const planTier = user?.subscription?.plan?.tier ?? 'free';
@@ -110,6 +145,105 @@ export default function InventoryScreen() {
   );
 
   const outOfStockItems = useMemo(() => items.filter((item) => item.quantity <= 0), [items]);
+
+  const eventsById = useMemo(() => {
+    return upcomingEvents.reduce<Record<string, UpcomingEvent>>((acc, event) => {
+      acc[event.id] = event;
+      return acc;
+    }, {});
+  }, [upcomingEvents]);
+
+  const stagedEventEntries = useMemo(() => {
+    return Object.entries(stagedByEvent).map(([eventId, stagedList]) => {
+      const event = eventsById[eventId];
+      const totalQuantity = stagedList.reduce((sum, staged) => sum + (staged.quantity ?? 0), 0);
+      const totalValueCents = stagedList.reduce(
+        (sum, staged) => sum + (staged.priceCents ?? 0) * (staged.quantity ?? 0),
+        0,
+      );
+      return {
+        eventId,
+        event,
+        items: stagedList,
+        totalQuantity,
+        totalValueCents,
+      };
+    }).sort((a, b) => {
+      const aTime = a.event ? new Date(a.event.startDateISO).getTime() : Number.POSITIVE_INFINITY;
+      const bTime = b.event ? new Date(b.event.startDateISO).getTime() : Number.POSITIVE_INFINITY;
+      return aTime - bTime;
+    });
+  }, [eventsById, stagedByEvent]);
+
+  const stagedModalItems = useMemo(() => {
+    if (!stagedModalEventId) return [];
+    return (stagedByEvent[stagedModalEventId] ?? []).map((item) => ({
+      id: item.id,
+      name: item.name,
+      quantity: item.quantity ?? 0,
+      priceCents: item.priceCents ?? null,
+    }));
+  }, [stagedByEvent, stagedModalEventId]);
+
+  const stagedModalEntry = useMemo(
+    () => stagedEventEntries.find((entry) => entry.eventId === stagedModalEventId) ?? null,
+    [stagedEventEntries, stagedModalEventId],
+  );
+
+  const stagedModalSubtitle = useMemo(() => {
+    if (!stagedModalEntry?.event) return null;
+    return formatEventRange(stagedModalEntry.event.startDateISO, stagedModalEntry.event.endDateISO);
+  }, [stagedModalEntry]);
+
+  const handleCloseStagedModal = useCallback(() => {
+    setStagedModalEventId(null);
+  }, []);
+
+  const handleLoadAllForEvent = useCallback(
+    (eventId: string) => {
+      if (!userId) {
+        setFeedback({ type: 'error', message: 'Sign in to load staged inventory.' });
+        return;
+      }
+
+      const itemsForEvent = stagedByEvent[eventId] ?? [];
+      if (!itemsForEvent.length) {
+        Alert.alert('No staged inventory', 'Stage items for this event before loading.');
+        return;
+      }
+
+      const eventName = eventsById[eventId]?.name ?? 'this event';
+      Alert.alert(
+        'Load staged inventory?',
+        `Load ${itemsForEvent.length} staged item${itemsForEvent.length === 1 ? '' : 's'} for ${eventName}?`,
+        [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Load',
+            style: 'default',
+            onPress: async () => {
+              try {
+                await loadStagedInventoryItems({ userId, eventId, items: itemsForEvent });
+                if (stagedModalEventId === eventId) {
+                  handleCloseStagedModal();
+                }
+                void refresh();
+                void refreshStaged();
+                setFeedback({
+                  type: 'success',
+                  message: `Loaded ${itemsForEvent.length} item${itemsForEvent.length === 1 ? '' : 's'} into inventory.`,
+                });
+              } catch (error) {
+                console.error('Failed to load staged inventory', error);
+                setFeedback({ type: 'error', message: 'Unable to load staged inventory right now.' });
+              }
+            },
+          },
+        ],
+      );
+    },
+    [eventsById, handleCloseStagedModal, loadStagedInventoryItems, refresh, refreshStaged, setFeedback, stagedByEvent, stagedModalEventId, userId],
+  );
 
   const stats = useMemo<SummaryStat[]>(() => {
     const total = items.length;
@@ -170,6 +304,49 @@ export default function InventoryScreen() {
   const handleNewItem = useCallback(() => {
     router.push('/item-form');
   }, [router]);
+
+  const handleEditStagedItem = useCallback(
+    (eventId: string, stagedId: string) => {
+      if (!userId) {
+        setFeedback({ type: 'error', message: 'Sign in to edit staged inventory.' });
+        return;
+      }
+      router.push({ pathname: '/item-form', params: { mode: 'stage', eventId, stagedId } });
+    },
+    [router, userId],
+  );
+
+  const handleReleaseStagedItem = useCallback(
+    async (staged: EventStagedInventoryItem) => {
+      if (!userId) {
+        setFeedback({ type: 'error', message: 'Sign in to update staged inventory.' });
+        return;
+      }
+      try {
+        await updateEventStagedInventoryStatus({
+          userId,
+          stagedId: staged.id,
+          status: 'released',
+          convertedItemId: null,
+        });
+        setFeedback({ type: 'success', message: 'Staged item released.' });
+      } catch (releaseError) {
+        console.error('Failed to release staged inventory', releaseError);
+        setFeedback({ type: 'error', message: 'Unable to release staged inventory right now.' });
+      }
+    },
+    [userId],
+  );
+
+  const handleReleaseStagedItemById = useCallback(
+    (eventId: string, stagedId: string) => {
+      const target = stagedByEvent[eventId]?.find((item) => item.id === stagedId);
+      if (target) {
+        void handleReleaseStagedItem(target);
+      }
+    },
+    [handleReleaseStagedItem, stagedByEvent],
+  );
 
   const applyInventoryRows = useCallback(
     async (rows: ReturnType<typeof parseInventoryCsv>) => {
@@ -382,6 +559,27 @@ export default function InventoryScreen() {
 
   const listEmpty = !loading && !filteredItems.length;
 
+  const handleModalEdit = useCallback(
+    (stagedId: string) => {
+      if (!stagedModalEventId) return;
+      handleEditStagedItem(stagedModalEventId, stagedId);
+    },
+    [handleEditStagedItem, stagedModalEventId],
+  );
+
+  const handleModalRelease = useCallback(
+    (stagedId: string) => {
+      if (!stagedModalEventId) return;
+      handleReleaseStagedItemById(stagedModalEventId, stagedId);
+    },
+    [handleReleaseStagedItemById, stagedModalEventId],
+  );
+
+  const handleModalLoadAll = useCallback(() => {
+    if (!stagedModalEventId) return;
+    handleLoadAllForEvent(stagedModalEventId);
+  }, [handleLoadAllForEvent, stagedModalEventId]);
+
   return (
     <SafeAreaView style={[styles.safeArea, { backgroundColor: theme.colors.background }]}>
       <View style={styles.container}>
@@ -436,6 +634,104 @@ export default function InventoryScreen() {
             })}
           </View>
         </LinearGradient>
+
+        {stagedEventEntries.length ? (
+          <View
+            style={[styles.stagingCard, { borderColor: theme.colors.border, backgroundColor: theme.colors.surface }]}
+          >
+            <View style={styles.sectionHeader}>
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.sectionTitle, { color: theme.colors.textPrimary }]}>Staged for events</Text>
+                <Text style={{ color: theme.colors.textSecondary, marginTop: 4 }}>
+                  Load prepped items into live inventory when you arrive on-site.
+                </Text>
+              </View>
+            </View>
+
+            {loadingStaged ? (
+              <View style={styles.stagingLoading}>
+                <ActivityIndicator size="small" color={theme.colors.primary} />
+              </View>
+            ) : (
+              <View style={{ gap: 12 }}>
+                {stagedEventEntries.map((entry) => {
+                  const { event, totalQuantity, totalValueCents } = entry;
+                  const formattedRange = event
+                    ? formatEventRange(event.startDateISO, event.endDateISO)
+                    : 'Event removed';
+                  const itemCount = entry.items.length;
+                  return (
+                    <View
+                      key={entry.eventId}
+                      style={[styles.stagedEventCard, { borderColor: theme.colors.border }]}
+                    >
+                      <View style={styles.stagedEventHeader}>
+                        <View style={{ flex: 1 }}>
+                          <Text style={[styles.stagedEventTitle, { color: theme.colors.textPrimary }]}>
+                            {event?.name ?? 'Archived event'}
+                          </Text>
+                          <Text style={{ color: theme.colors.textSecondary }}>{formattedRange}</Text>
+                        </View>
+                        <View style={{ alignItems: 'flex-end' }}>
+                          <Text style={{ color: theme.colors.textPrimary, fontWeight: '600' }}>
+                            {totalQuantity} unit{totalQuantity === 1 ? '' : 's'}
+                          </Text>
+                          <Text style={{ color: theme.colors.textSecondary, marginTop: 2 }}>
+                            {totalValueCents > 0
+                              ? formatCurrencyFromCents(totalValueCents, 'USD')
+                              : 'Value pending'}
+                          </Text>
+                        </View>
+                      </View>
+
+                      <View style={styles.stagedEventSummaryRow}>
+                        <Text style={{ color: theme.colors.textSecondary }}>
+                          {itemCount
+                            ? `${itemCount} item${itemCount === 1 ? '' : 's'} staged`
+                            : 'No staged inventory yet.'}
+                        </Text>
+                        {itemCount ? (
+                          <View style={styles.stagedEventSummaryActions}>
+                            <Pressable
+                              onPress={() => handleLoadAllForEvent(entry.eventId)}
+                              style={({ pressed }) => [
+                                styles.stagedLoadAllButton,
+                                {
+                                  borderColor: theme.colors.primary,
+                                  backgroundColor: pressed
+                                    ? 'rgba(101, 88, 245, 0.16)'
+                                    : 'rgba(101, 88, 245, 0.12)',
+                                },
+                              ]}
+                            >
+                              <Feather name="log-in" size={14} color={theme.colors.primary} />
+                              <Text style={[styles.stagedActionLabel, { color: theme.colors.primary }]}>Load all</Text>
+                            </Pressable>
+                            <Pressable
+                              onPress={() => setStagedModalEventId(entry.eventId)}
+                              style={({ pressed }) => [
+                                styles.stagedActionButton,
+                                {
+                                  borderColor: theme.colors.textSecondary,
+                                  backgroundColor: pressed
+                                    ? 'rgba(139, 149, 174, 0.16)'
+                                    : 'rgba(139, 149, 174, 0.12)',
+                                },
+                              ]}
+                            >
+                              <Feather name="list" size={14} color={theme.colors.textSecondary} />
+                              <Text style={[styles.stagedActionLabel, { color: theme.colors.textSecondary }]}>Manage</Text>
+                            </Pressable>
+                          </View>
+                        ) : null}
+                      </View>
+                    </View>
+                  );
+                })}
+              </View>
+            )}
+          </View>
+        ) : null}
 
         <View style={styles.toolbar}>
           <View style={styles.toolbarActions}>
@@ -533,8 +829,11 @@ export default function InventoryScreen() {
           }
           refreshControl={(
             <RefreshControl
-              refreshing={loading}
-              onRefresh={() => refresh()}
+              refreshing={loading || loadingStaged}
+              onRefresh={() => {
+                void refresh();
+                void refreshStaged();
+              }}
               tintColor={theme.colors.primary}
               colors={[theme.colors.primary]}
             />
@@ -606,6 +905,20 @@ export default function InventoryScreen() {
           </View>
         </View>
       </Modal>
+
+      <StagedInventoryModal
+        visible={Boolean(stagedModalEventId)}
+        onClose={handleCloseStagedModal}
+        title={stagedModalEntry?.event?.name ?? 'Staged inventory'}
+        subtitle={stagedModalSubtitle}
+        items={stagedModalItems}
+        loading={loadingStaged}
+        emptyMessage="No staged inventory yet. Use the event screen to stage items ahead of time."
+        onLoadAll={stagedModalEventId ? handleModalLoadAll : undefined}
+        onEdit={stagedModalEventId ? handleModalEdit : undefined}
+        onRelease={stagedModalEventId ? handleModalRelease : undefined}
+        releaseLabel="Release"
+      />
 
       <Modal visible={(isProcessingImport || isExporting) && !importOptionsVisible} transparent animationType="fade">
         <View style={styles.loadingOverlay}>
@@ -726,6 +1039,9 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingHorizontal: 20,
     paddingTop: 16,
+    width: '100%',
+    maxWidth: 720,
+    alignSelf: 'center',
   },
   feedbackBanner: {
     borderRadius: 12,
@@ -742,6 +1058,19 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     padding: 20,
     marginBottom: 20,
+    alignSelf: 'stretch',
+  },
+  stagingCard: {
+    borderWidth: 1,
+    borderRadius: 18,
+    padding: 16,
+    marginBottom: 20,
+    gap: 14,
+    alignSelf: 'stretch',
+  },
+  stagingLoading: {
+    paddingVertical: 12,
+    alignItems: 'center',
   },
   heroHeader: {
     flexDirection: 'row',
@@ -750,6 +1079,16 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
     gap: 12,
     marginBottom: 16,
+  },
+  sectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  sectionTitle: {
+    fontSize: 18,
+    fontWeight: '600',
   },
   heroTitle: {
     fontSize: 24,
@@ -777,6 +1116,59 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     gap: 12,
+  },
+  stagedEventCard: {
+    borderWidth: 1,
+    borderRadius: 16,
+    padding: 12,
+    gap: 12,
+    alignSelf: 'stretch',
+  },
+  stagedEventHeader: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    gap: 12,
+    flexWrap: 'wrap',
+  },
+  stagedEventSummaryRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    flexWrap: 'wrap',
+    gap: 12,
+  },
+  stagedEventSummaryActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    flexWrap: 'wrap',
+  },
+  stagedEventTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  stagedActionButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    borderWidth: 1,
+    borderRadius: 999,
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+  },
+  stagedLoadAllButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    borderWidth: 1,
+    borderRadius: 999,
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+  },
+  stagedActionLabel: {
+    fontSize: 12,
+    fontWeight: '600',
   },
   statCard: {
     flex: 1,

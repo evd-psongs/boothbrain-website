@@ -31,7 +31,7 @@ export async function createInventoryItem({
 }: {
   userId: string;
   input: InventoryInput;
-}) {
+}): Promise<InventoryItem> {
   const payload = {
     owner_user_id: userId,
     event_id: input.sessionId ?? null,
@@ -43,10 +43,18 @@ export async function createInventoryItem({
     image_paths: input.imagePaths ?? [],
   };
 
-  const { error } = await supabase.from('items').insert(payload);
-  if (error) {
-    throw error;
+  const { data, error } = await supabase
+    .from('items')
+    .insert(payload)
+    .select(
+      'id, owner_user_id, event_id, name, sku, price_cents, quantity, low_stock_threshold, image_paths, created_at, updated_at',
+    )
+    .single();
+  if (error || !data) {
+    throw error ?? new Error('Failed to create inventory item.');
   }
+
+  return mapRowToItem(data);
 }
 
 export async function updateInventoryItem({

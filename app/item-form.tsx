@@ -21,10 +21,20 @@ import { useTheme } from '@/providers/ThemeProvider';
 import { useSupabaseAuth } from '@/providers/SupabaseAuthProvider';
 import { useInventory } from '@/hooks/useInventory';
 import { createInventoryItem, deleteInventoryItem, getInventoryItem, updateInventoryItem } from '@/lib/inventory';
+import {
+  createEventStagedInventoryItem,
+  deleteEventStagedInventoryItem,
+  getEventStagedInventoryItem,
+  updateEventStagedInventoryItem,
+  updateEventStagedInventoryStatus,
+} from '@/lib/eventStagedInventory';
 import { getItemImagePublicUrl, removeItemImage, uploadItemImage } from '@/lib/itemImages';
+import type { EventStagedInventoryItem } from '@/types/inventory';
 
 const FREE_PLAN_ITEM_LIMIT = 5;
 const PAUSED_PLAN_ITEM_LIMIT = 3;
+
+type FormMode = 'inventory' | 'stage' | 'convert';
 
 type FeedbackState = {
   type: 'success' | 'error' | 'info';
@@ -58,9 +68,28 @@ export default function ItemFormScreen() {
   const router = useRouter();
   const { theme } = useTheme();
   const { user } = useSupabaseAuth();
-  const { itemId } = useLocalSearchParams<{ itemId?: string }>();
+  const { itemId, mode: modeParam, eventId: eventIdParam, stagedId } = useLocalSearchParams<{
+    itemId?: string;
+    mode?: string;
+    eventId?: string;
+    stagedId?: string;
+  }>();
   const userId = user?.id ?? null;
-  const isEditing = typeof itemId === 'string' && itemId.length > 0;
+
+  const formMode: FormMode =
+    modeParam === 'stage' || modeParam === 'convert' ? (modeParam as FormMode) : 'inventory';
+  const isInventoryMode = formMode === 'inventory';
+  const isStagingMode = formMode === 'stage';
+  const isConvertMode = formMode === 'convert';
+
+  const stageEventId =
+    typeof eventIdParam === 'string' && eventIdParam.length > 0 ? eventIdParam : null;
+  const stagingTargetId =
+    typeof stagedId === 'string' && stagedId.length > 0 ? stagedId : null;
+
+  const editingInventoryItem =
+    isInventoryMode && typeof itemId === 'string' && itemId.length > 0;
+  const editingStagedItem = !isInventoryMode && Boolean(stagingTargetId);
 
   const { items } = useInventory(userId);
 
@@ -75,12 +104,22 @@ export default function ItemFormScreen() {
 
   const [form, setForm] = useState<FormState>(defaultState);
   const [feedback, setFeedback] = useState<FeedbackState>(null);
-  const [loading, setLoading] = useState<boolean>(isEditing);
+  const [loading, setLoading] = useState<boolean>(
+    editingInventoryItem || editingStagedItem || isConvertMode,
+  );
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [images, setImages] = useState<ItemImageState[]>([]);
   const [removedImagePaths, setRemovedImagePaths] = useState<string[]>([]);
   const [imagePickerBusy, setImagePickerBusy] = useState(false);
+  const [stagedItem, setStagedItem] = useState<EventStagedInventoryItem | null>(null);
+  const [activeStageEventId, setActiveStageEventId] = useState<string | null>(stageEventId);
+
+  useEffect(() => {
+    if (isStagingMode && !editingStagedItem) {
+      setActiveStageEventId(stageEventId);
+    }
+  }, [editingStagedItem, isStagingMode, stageEventId]);
 
   useEffect(() => {
     if (!feedback) return;
@@ -91,37 +130,85 @@ export default function ItemFormScreen() {
   useEffect(() => {
     let isActive = true;
 
-    const loadItem = async () => {
-      if (!isEditing || !userId || !itemId) {
-        setImages([]);
-        setRemovedImagePaths([]);
-        setLoading(false);
+    const loadData = async () => {
+      if (!userId) {
+        if (isActive) {
+          setForm(defaultState);
+          setImages([]);
+          setRemovedImagePaths([]);
+          setStagedItem(null);
+          setActiveStageEventId(stageEventId);
+          setLoading(false);
+        }
+        return;
+      }
+
+      if (!editingInventoryItem && !editingStagedItem && !isConvertMode) {
+        if (isActive) {
+          setForm(defaultState);
+          setImages([]);
+          setRemovedImagePaths([]);
+          setStagedItem(null);
+          setActiveStageEventId(stageEventId);
+          setLoading(false);
+        }
         return;
       }
 
       try {
-        const item = await getInventoryItem({ userId, itemId });
-        if (item && isActive) {
-          setForm({
-            name: item.name,
-            price: (item.priceCents / 100).toFixed(2),
-            sku: item.sku ?? '',
-            quantity: String(item.quantity ?? ''),
-            lowStock: String(item.lowStockThreshold ?? ''),
+        if (editingInventoryItem && itemId) {
+          const item = await getInventoryItem({ userId, itemId });
+          if (item && isActive) {
+            setForm({
+              name: item.name,
+              price: (item.priceCents / 100).toFixed(2),
+              sku: item.sku ?? '',
+              quantity: String(item.quantity ?? ''),
+              lowStock: String(item.lowStockThreshold ?? ''),
+            });
+            const mappedImages: ItemImageState[] = (item.imagePaths ?? []).map((path) => ({
+              id: path,
+              uri: getItemImagePublicUrl(path),
+              path,
+              uploading: false,
+            }));
+            setImages(mappedImages);
+            setRemovedImagePaths([]);
+          }
+        } else if ((editingStagedItem || isConvertMode) && stagingTargetId) {
+          const staged = await getEventStagedInventoryItem({
+            userId,
+            stagedId: stagingTargetId,
           });
-          const mappedImages: ItemImageState[] = (item.imagePaths ?? []).map((path) => ({
-            id: path,
-            uri: getItemImagePublicUrl(path),
-            path,
-            uploading: false,
-          }));
-          setImages(mappedImages);
-          setRemovedImagePaths([]);
+          if (staged && isActive) {
+            setForm({
+              name: staged.name,
+              price: (staged.priceCents / 100).toFixed(2),
+              sku: staged.sku ?? '',
+              quantity: String(staged.quantity ?? ''),
+              lowStock: String(staged.lowStockThreshold ?? ''),
+            });
+            const mappedImages: ItemImageState[] = (staged.imagePaths ?? []).map((path) => ({
+              id: path,
+              uri: getItemImagePublicUrl(path),
+              path,
+              uploading: false,
+            }));
+            setImages(mappedImages);
+            setRemovedImagePaths([]);
+            setStagedItem(staged);
+            setActiveStageEventId(staged.eventId);
+          } else if (isActive) {
+            setStagedItem(null);
+          }
         }
       } catch (error) {
         console.error('Failed to load item', error);
         if (isActive) {
-          setFeedback({ type: 'error', message: 'Unable to load item details.' });
+          const message = editingInventoryItem
+            ? 'Unable to load item details.'
+            : 'Unable to load staged inventory.';
+          setFeedback({ type: 'error', message });
         }
       } finally {
         if (isActive) {
@@ -130,18 +217,41 @@ export default function ItemFormScreen() {
       }
     };
 
-    void loadItem();
+    void loadData();
     return () => {
       isActive = false;
     };
-  }, [isEditing, itemId, userId]);
+  }, [editingInventoryItem, editingStagedItem, isConvertMode, itemId, stagingTargetId, userId]);
 
   const currentItemCount = items.length;
+  const enforcePlanLimit = isInventoryMode || isConvertMode;
   const remainingSlots = useMemo(() => {
-    if (planItemLimit == null) return null;
-    const baseline = isEditing ? currentItemCount - 1 : currentItemCount;
+    if (planItemLimit == null || !enforcePlanLimit) return null;
+    const baseline = editingInventoryItem ? currentItemCount - 1 : currentItemCount;
     return Math.max(planItemLimit - baseline, 0);
-  }, [planItemLimit, currentItemCount, isEditing]);
+  }, [planItemLimit, currentItemCount, editingInventoryItem, enforcePlanLimit]);
+
+  const headerTitle = useMemo(() => {
+    if (isInventoryMode) {
+      return editingInventoryItem ? 'Edit item' : 'New item';
+    }
+    if (isStagingMode) {
+      return editingStagedItem ? 'Edit staged item' : 'Stage inventory';
+    }
+    return 'Load staged item';
+  }, [editingInventoryItem, editingStagedItem, isInventoryMode, isStagingMode]);
+
+  const showDeleteAction = useMemo(() => {
+    if (isInventoryMode) {
+      return editingInventoryItem;
+    }
+    return (isStagingMode || isConvertMode) && Boolean(stagingTargetId);
+  }, [editingInventoryItem, isConvertMode, isInventoryMode, isStagingMode, stagingTargetId]);
+
+  const deleteLabel = useMemo(() => {
+    if (isInventoryMode) return 'Delete item';
+    return 'Remove staged item';
+  }, [isInventoryMode]);
 
   const handleChange = useCallback((key: keyof FormState, value: string) => {
     setForm((prev) => ({ ...prev, [key]: value }));
@@ -226,7 +336,23 @@ export default function ItemFormScreen() {
 
     const lowStockValue = Number.parseInt(form.lowStock, 10) || 0;
 
-    if (!isEditing && planItemLimit != null && currentItemCount >= planItemLimit) {
+    const effectiveEventId = activeStageEventId ?? stageEventId ?? stagedItem?.eventId ?? null;
+    if (!isInventoryMode && !effectiveEventId) {
+      setFeedback({ type: 'error', message: 'Pick an event before staging inventory.' });
+      return;
+    }
+
+    if (isConvertMode && !stagingTargetId) {
+      setFeedback({ type: 'error', message: 'Select a staged item to convert.' });
+      return;
+    }
+
+    if (
+      enforcePlanLimit
+      && !editingInventoryItem
+      && planItemLimit != null
+      && currentItemCount >= planItemLimit
+    ) {
       setFeedback({ type: 'error', message: `Your plan allows up to ${planItemLimit} items.` });
       return;
     }
@@ -252,7 +378,9 @@ export default function ItemFormScreen() {
           uploadedDuringSave.push(path);
           uploadResults.push({ id: image.id, path, publicUrl });
           setImages((prev) =>
-            prev.map((img) => (img.id === image.id ? { ...img, path, uri: publicUrl, uploading: false } : img)),
+            prev.map((img) =>
+              img.id === image.id ? { ...img, path, uri: publicUrl, uploading: false } : img,
+            ),
           );
         } catch (uploadError) {
           console.error('Failed to upload item image', uploadError);
@@ -273,22 +401,76 @@ export default function ItemFormScreen() {
         .filter((path): path is string => Boolean(path))
         .slice(0, 2);
 
-      const payload = {
+      const sharedDetails = {
         name: trimmedName,
         sku: form.sku.trim() || null,
         priceCents: Math.round(priceValue * 100),
         quantity: quantityValue,
         lowStockThreshold: Math.max(lowStockValue, 0),
-        sessionId: null,
         imagePaths: finalImagePaths,
       };
 
-      if (isEditing && itemId) {
-        await updateInventoryItem({ userId, itemId, input: payload });
-        setFeedback({ type: 'success', message: 'Item updated.' });
-      } else {
-        await createInventoryItem({ userId, input: payload });
-        setFeedback({ type: 'success', message: 'Item created.' });
+      if (isInventoryMode) {
+        if (editingInventoryItem && itemId) {
+          await updateInventoryItem({
+            userId,
+            itemId,
+            input: { ...sharedDetails, sessionId: null },
+          });
+          setFeedback({ type: 'success', message: 'Item updated.' });
+        } else {
+          await createInventoryItem({
+            userId,
+            input: { ...sharedDetails, sessionId: null },
+          });
+          setFeedback({ type: 'success', message: 'Item created.' });
+        }
+      } else if (isStagingMode) {
+        if (!effectiveEventId) {
+          setFeedback({ type: 'error', message: 'Pick an event before staging inventory.' });
+          return;
+        }
+        if (editingStagedItem && stagingTargetId) {
+          await updateEventStagedInventoryItem({
+            userId,
+            stagedId: stagingTargetId,
+            input: { ...sharedDetails },
+          });
+          setFeedback({ type: 'success', message: 'Pre-staged item updated.' });
+        } else {
+          const created = await createEventStagedInventoryItem({
+            userId,
+            eventId: effectiveEventId,
+            input: { ...sharedDetails },
+          });
+          setStagedItem(created);
+          setFeedback({ type: 'success', message: 'Inventory staged for this event.' });
+        }
+      } else if (isConvertMode && stagingTargetId) {
+        if (!effectiveEventId) {
+          setFeedback({ type: 'error', message: 'This staged item is missing an event link.' });
+          return;
+        }
+
+        await updateEventStagedInventoryItem({
+          userId,
+          stagedId: stagingTargetId,
+          input: { ...sharedDetails },
+        });
+
+        const createdItem = await createInventoryItem({
+          userId,
+          input: { ...sharedDetails, sessionId: effectiveEventId },
+        });
+
+        await updateEventStagedInventoryStatus({
+          userId,
+          stagedId: stagingTargetId,
+          status: 'converted',
+          convertedItemId: createdItem.id,
+        });
+
+        setFeedback({ type: 'success', message: 'Inventory added from staging.' });
       }
 
       if (removedImagePaths.length) {
@@ -315,44 +497,112 @@ export default function ItemFormScreen() {
         ]);
         setRemovedImagePaths([]);
       }
-      setFeedback({ type: 'error', message: 'Unable to save item. Try again.' });
+      setFeedback({ type: 'error', message: 'Unable to save changes. Try again.' });
     } finally {
       setSaving(false);
     }
-  }, [userId, form, isEditing, planItemLimit, currentItemCount, itemId, router, images, removedImagePaths]);
+  }, [
+    userId,
+    form,
+    activeStageEventId,
+    stageEventId,
+    stagedItem?.eventId,
+    isInventoryMode,
+    isStagingMode,
+    isConvertMode,
+    enforcePlanLimit,
+    editingInventoryItem,
+    editingStagedItem,
+    planItemLimit,
+    currentItemCount,
+    stagingTargetId,
+    itemId,
+    images,
+    removedImagePaths,
+    router,
+  ]);
 
   const handleDelete = useCallback(() => {
-    if (!userId || !itemId) return;
+    if (!userId) return;
 
-    Alert.alert('Delete item?', 'This cannot be undone.', [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Delete',
-        style: 'destructive',
-        onPress: async () => {
-          try {
-            setDeleting(true);
-            await deleteInventoryItem({ userId, itemId });
-            const removalTargets = Array.from(
-              new Set([
-                ...images.map((img) => img.path).filter(Boolean) as string[],
-                ...removedImagePaths,
-              ]),
-            );
-            if (removalTargets.length) {
-              await Promise.allSettled(removalTargets.map((path) => removeItemImage(path)));
+    if (isInventoryMode) {
+      if (!editingInventoryItem || !itemId) return;
+
+      Alert.alert('Delete item?', 'This cannot be undone.', [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              setDeleting(true);
+              await deleteInventoryItem({ userId, itemId });
+              const removalTargets = Array.from(
+                new Set([
+                  ...images.map((img) => img.path).filter(Boolean) as string[],
+                  ...removedImagePaths,
+                ]),
+              );
+              if (removalTargets.length) {
+                await Promise.allSettled(removalTargets.map((path) => removeItemImage(path)));
+              }
+              router.back();
+            } catch (error) {
+              console.error('Failed to delete item', error);
+              setFeedback({ type: 'error', message: 'Unable to delete item.' });
+            } finally {
+              setDeleting(false);
             }
-            router.back();
-          } catch (error) {
-            console.error('Failed to delete item', error);
-            setFeedback({ type: 'error', message: 'Unable to delete item.' });
-          } finally {
-            setDeleting(false);
-          }
+          },
         },
-      },
-    ]);
-  }, [userId, itemId, router, images, removedImagePaths]);
+      ]);
+      return;
+    }
+
+    if ((isStagingMode || isConvertMode) && stagingTargetId) {
+      Alert.alert('Remove staged item?', 'This will clear the pre-staged record.', [
+        { text: 'Keep', style: 'cancel' },
+        {
+          text: 'Remove',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              setDeleting(true);
+              await deleteEventStagedInventoryItem({ userId, stagedId: stagingTargetId });
+              const removalTargets = Array.from(
+                new Set([
+                  ...images.map((img) => img.path).filter(Boolean) as string[],
+                  ...removedImagePaths,
+                  ...(stagedItem?.imagePaths ?? []),
+                ]),
+              );
+              if (removalTargets.length) {
+                await Promise.allSettled(removalTargets.map((path) => removeItemImage(path)));
+              }
+              router.back();
+            } catch (error) {
+              console.error('Failed to delete staged item', error);
+              setFeedback({ type: 'error', message: 'Unable to remove staged inventory.' });
+            } finally {
+              setDeleting(false);
+            }
+          },
+        },
+      ]);
+    }
+  }, [
+    userId,
+    isInventoryMode,
+    editingInventoryItem,
+    itemId,
+    images,
+    removedImagePaths,
+    router,
+    isStagingMode,
+    isConvertMode,
+    stagingTargetId,
+    stagedItem?.imagePaths,
+  ]);
 
   const formDisabled = loading || saving || deleting;
   const canAddImage = images.length < 2 && !saving && !deleting && !imagePickerBusy;
@@ -372,9 +622,7 @@ export default function ItemFormScreen() {
             <Pressable onPress={() => router.back()} hitSlop={12} style={styles.iconButton}>
               <Feather name="arrow-left" size={20} color={theme.colors.textPrimary} />
             </Pressable>
-            <Text style={[styles.title, { color: theme.colors.textPrimary }]}>
-              {isEditing ? 'Edit item' : 'New item'}
-            </Text>
+            <Text style={[styles.title, { color: theme.colors.textPrimary }]}>{headerTitle}</Text>
             <Pressable
               onPress={handleSave}
               disabled={formDisabled}
@@ -396,11 +644,29 @@ export default function ItemFormScreen() {
 
           {feedback ? <FeedbackBanner feedback={feedback} colors={theme.colors} /> : null}
 
-          {remainingSlots != null && !isEditing ? (
+          {remainingSlots != null && !editingInventoryItem && isInventoryMode ? (
             <View style={[styles.notice, { borderColor: theme.colors.border, backgroundColor: theme.colors.surface }]}
             >
               <Feather name="info" size={14} color={theme.colors.textSecondary} />
               <Text style={[styles.noticeText, { color: theme.colors.textSecondary }]}>You can add {remainingSlots} more item{remainingSlots === 1 ? '' : 's'} on your plan.</Text>
+            </View>
+          ) : null}
+
+          {isStagingMode ? (
+            <View style={[styles.notice, { borderColor: theme.colors.border, backgroundColor: theme.colors.surface }]}>
+              <Feather name="clock" size={14} color={theme.colors.textSecondary} />
+              <Text style={[styles.noticeText, { color: theme.colors.textSecondary }]}>
+                Staged items stay linked to this event until you load them into live inventory.
+              </Text>
+            </View>
+          ) : null}
+
+          {isConvertMode ? (
+            <View style={[styles.notice, { borderColor: theme.colors.border, backgroundColor: theme.colors.surface }]}>
+              <Feather name="truck" size={14} color={theme.colors.textSecondary} />
+              <Text style={[styles.noticeText, { color: theme.colors.textSecondary }]}>
+                Saving will add this item to live inventory and mark the staged record as loaded.
+              </Text>
             </View>
           ) : null}
 
@@ -525,7 +791,7 @@ export default function ItemFormScreen() {
                 </View>
               </View>
 
-              {isEditing ? (
+              {showDeleteAction ? (
                 <Pressable
                   onPress={handleDelete}
                   disabled={deleting}
@@ -540,7 +806,7 @@ export default function ItemFormScreen() {
                   {deleting ? (
                     <ActivityIndicator size="small" color={theme.colors.surface} />
                   ) : (
-                    <Text style={[styles.deleteButtonText, { color: theme.colors.surface }]}>Delete item</Text>
+                    <Text style={[styles.deleteButtonText, { color: theme.colors.surface }]}>{deleteLabel}</Text>
                   )}
                 </Pressable>
               ) : null}
