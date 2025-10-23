@@ -27,7 +27,7 @@ import { useTheme } from '@/providers/ThemeProvider';
 import { formatCurrencyFromCents } from '@/utils/currency';
 import type { SubscriptionPlan } from '@/types/auth';
 import * as DocumentPicker from 'expo-document-picker';
-import * as FileSystem from 'expo-file-system';
+import { readAsStringAsync } from 'expo-file-system/legacy';
 
 type FeedbackState = {
   type: 'success' | 'error';
@@ -697,7 +697,7 @@ export default function SettingsScreen() {
       }
 
       const mimeType = asset.mimeType ?? 'image/png';
-      const base64 = await FileSystem.readAsStringAsync(asset.uri, { encoding: 'base64' });
+      const base64 = await readAsStringAsync(asset.uri, { encoding: 'base64' });
       const dataUrl = `data:${mimeType};base64,${base64}`;
 
       setPaymentValues((prev) => ({ ...prev, paypalQrUri: dataUrl }));
