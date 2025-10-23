@@ -84,6 +84,7 @@ export default function HomeScreen() {
   const [taskModalEventId, setTaskModalEventId] = useState<string | null>(null);
   const [taskTitle, setTaskTitle] = useState('');
   const [taskPhase, setTaskPhase] = useState<'prep' | 'live' | 'post'>('prep');
+  const [expandedEvents, setExpandedEvents] = useState<Record<string, boolean>>({});
 
   const phase = useMemo(() => {
     if (!events.length) return 'no-events';
@@ -484,89 +485,115 @@ export default function HomeScreen() {
 
           {events.length ? (
             <View
-              style={[styles.sectionCard, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}
-            >
+              style={[styles.sectionCard, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
               <Text style={[styles.sectionTitle, { color: theme.colors.textPrimary, marginBottom: 12 }]}>Event prep</Text>
               {events.map((event) => {
+                const expanded = expandedEvents[event.id] ?? false;
                 const eventPhase = getEventPhase(event);
-                const phaseLabel = eventPhase === 'prep' ? 'Prep tasks' : eventPhase === 'live' ? 'Live tasks' : 'Wrap-up tasks';
+                const phaseLabel =
+                  eventPhase === 'prep' ? 'Prep tasks' : eventPhase === 'live' ? 'Live tasks' : 'Wrap-up tasks';
                 const filteredChecklist = (event.checklist ?? []).filter((item) => item.phase === eventPhase);
                 const remainingCount = (event.checklist ?? []).filter((item) => item.phase !== eventPhase).length;
+
                 return (
                   <View key={`${event.id}-prep`} style={styles.prepCard}>
-                    <View style={styles.prepHeader}>
-                      <View>
-                        <Text style={[styles.prepTitle, { color: theme.colors.textPrimary }]}>{event.name}</Text>
-                        <Text style={{ color: theme.colors.textSecondary }}>
-                          {formatEventRange(event.startDateISO, event.endDateISO)}
-                        </Text>
-                        <Text style={{ color: theme.colors.textMuted, fontSize: 12, marginTop: 2 }}>{phaseLabel}</Text>
-                      </View>
-                      <Pressable onPress={() => handleRemoveEvent(event.id)} hitSlop={10}>
-                        <Feather name="trash-2" size={16} color={theme.colors.error} />
-                      </Pressable>
-                    </View>
-                    {filteredChecklist.length ? (
-                      <View style={{ gap: 8 }}>
-                        {filteredChecklist.map((item) => (
-                          <Pressable
-                            key={item.id}
-                            onPress={() => handleToggleChecklistItem(event.id, item.id, !item.done)}
-                            style={({ pressed }) => [
-                              styles.checklistRow,
-                              {
-                                opacity: pressed ? 0.8 : 1,
-                              },
-                            ]}
-                          >
-                            <View
-                              style={[
-                                styles.checkbox,
-                                {
-                                  borderColor: item.done ? theme.colors.primary : theme.colors.border,
-                                  backgroundColor: item.done ? theme.colors.primary : 'transparent',
-                                },
-                              ]}
-                            >
-                              {item.done ? <Feather name="check" size={12} color={theme.colors.surface} /> : null}
-                            </View>
-                            <View style={{ flex: 1 }}>
-                              <Text
-                                style={{
-                                  color: item.done ? theme.colors.textMuted : theme.colors.textPrimary,
-                                  textDecorationLine: item.done ? 'line-through' : 'none',
-                                }}
-                              >
-                                {item.title}
-                              </Text>
-                              <Text style={{ color: theme.colors.textSecondary, fontSize: 12 }}>
-                                Tap to mark as {item.done ? 'incomplete' : 'done'}
-                              </Text>
-                            </View>
-                          </Pressable>
-                        ))}
-                      </View>
-                    ) : (
-                      <Text style={{ color: theme.colors.textSecondary }}>No tasks for this phase yet.</Text>
-                    )}
-                    {remainingCount ? (
-                      <Text style={{ color: theme.colors.textMuted, fontSize: 12 }}>
-                        {remainingCount} task{remainingCount === 1 ? '' : 's'} saved for other phases.
-                      </Text>
-                    ) : null}
                     <Pressable
-                      onPress={() => openTaskModal(event.id, eventPhase)}
+                      onPress={() =>
+                        setExpandedEvents((prev) => ({
+                          ...prev,
+                          [event.id]: !(prev[event.id] ?? false),
+                        }))
+                      }
                       style={({ pressed }) => [
-                        styles.addTaskButton,
+                        styles.prepHeader,
                         {
-                          borderColor: theme.colors.border,
                           opacity: pressed ? 0.85 : 1,
                         },
                       ]}
                     >
-                      <Feather name="plus" size={14} color={theme.colors.textPrimary} style={{ marginRight: 8 }} />
-                      <Text style={{ color: theme.colors.textPrimary, fontSize: 13 }}>Add task</Text>
+                      <View style={{ flex: 1 }}>
+                        <Text style={[styles.prepTitle, { color: theme.colors.textPrimary }]}>{event.name}</Text>
+                        <Text style={{ color: theme.colors.textSecondary }}>
+                          {formatEventRange(event.startDateISO, event.endDateISO)}
+                        </Text>
+                      </View>
+                      <Feather
+                        name={expanded ? 'chevron-up' : 'chevron-down'}
+                        size={18}
+                        color={theme.colors.textSecondary}
+                        style={{ marginRight: 12 }}
+                      />
+                      <Pressable onPress={() => handleRemoveEvent(event.id)} hitSlop={10}>
+                        <Feather name="trash-2" size={16} color={theme.colors.error} />
+                      </Pressable>
                     </Pressable>
+
+                    {expanded ? (
+                      <>
+                        <Text style={{ color: theme.colors.textMuted, fontSize: 12, marginBottom: 8 }}>{phaseLabel}</Text>
+                        {filteredChecklist.length ? (
+                          <View style={{ gap: 8 }}>
+                            {filteredChecklist.map((item) => (
+                              <Pressable
+                                key={item.id}
+                                onPress={() => handleToggleChecklistItem(event.id, item.id, !item.done)}
+                                style={({ pressed }) => [
+                                  styles.checklistRow,
+                                  {
+                                    opacity: pressed ? 0.8 : 1,
+                                  },
+                                ]}
+                              >
+                                <View
+                                  style={[
+                                    styles.checkbox,
+                                    {
+                                      borderColor: item.done ? theme.colors.primary : theme.colors.border,
+                                      backgroundColor: item.done ? theme.colors.primary : 'transparent',
+                                    },
+                                  ]}
+                                >
+                                  {item.done ? <Feather name="check" size={12} color={theme.colors.surface} /> : null}
+                                </View>
+                                <View style={{ flex: 1 }}>
+                                  <Text
+                                    style={{
+                                      color: item.done ? theme.colors.textMuted : theme.colors.textPrimary,
+                                      textDecorationLine: item.done ? 'line-through' : 'none',
+                                    }}
+                                  >
+                                    {item.title}
+                                  </Text>
+                                  <Text style={{ color: theme.colors.textSecondary, fontSize: 12 }}>
+                                    Tap to mark as {item.done ? 'incomplete' : 'done'}
+                                  </Text>
+                                </View>
+                              </Pressable>
+                            ))}
+                          </View>
+                        ) : (
+                          <Text style={{ color: theme.colors.textSecondary }}>No tasks for this phase yet.</Text>
+                        )}
+                        {remainingCount ? (
+                          <Text style={{ color: theme.colors.textMuted, fontSize: 12 }}>
+                            {remainingCount} task{remainingCount === 1 ? '' : 's'} saved for other phases.
+                          </Text>
+                        ) : null}
+                        <Pressable
+                          onPress={() => openTaskModal(event.id, eventPhase)}
+                          style={({ pressed }) => [
+                            styles.addTaskButton,
+                            {
+                              borderColor: theme.colors.border,
+                              opacity: pressed ? 0.85 : 1,
+                            },
+                          ]}
+                        >
+                          <Feather name="plus" size={14} color={theme.colors.textPrimary} style={{ marginRight: 8 }} />
+                          <Text style={{ color: theme.colors.textPrimary, fontSize: 13 }}>Add task</Text>
+                        </Pressable>
+                      </>
+                    ) : null}
                   </View>
                 );
               })}
