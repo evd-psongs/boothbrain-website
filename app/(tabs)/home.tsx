@@ -81,40 +81,19 @@ export default function HomeScreen() {
   const [pickerYear, setPickerYear] = useState(new Date().getFullYear());
   const [pickerMonth, setPickerMonth] = useState(new Date().getMonth());
 
-  const lowStockItems = useMemo(
-    () =>
-      items.filter((item) => {
-        const threshold = Math.max(item.lowStockThreshold, 0);
-        return item.quantity <= threshold;
-      }),
-    [items],
-  );
-
-  const suggestions = useMemo(() => {
-    const list: { title: string; body: string; icon: keyof typeof Feather.glyphMap }[] = [];
-    if (!events.length) {
-      list.push({
-        title: 'Plan your next booth',
-        body: 'Add an upcoming event so BoothBrain can help you prep inventory and promos.',
-        icon: 'calendar',
-      });
-    }
-    if (lowStockItems.length) {
-      list.push({
-        title: 'Restock low inventory',
-        body: `${lowStockItems.length} item${lowStockItems.length === 1 ? '' : 's'} close to selling out.`,
-        icon: 'alert-triangle',
-      });
-    }
-    if (!orders.length) {
-      list.push({
-        title: 'Record your first sale',
-        body: 'Start a sale to unlock live revenue tracking and reporting tools.',
-        icon: 'trending-up',
-      });
-    }
-    return list;
-  }, [events.length, lowStockItems.length, orders.length]);
+  const phase = useMemo(() => {
+    if (!events.length) return 'no-events';
+    const activeEvent = events.find((event) => {
+      const now = Date.now();
+      const start = new Date(event.startDateISO).getTime();
+      const end = new Date(event.endDateISO).getTime();
+      return now >= start && now <= end;
+    });
+    if (activeEvent) return 'live';
+    const futureEvent = events.find((event) => new Date(event.startDateISO).getTime() > Date.now());
+    if (futureEvent) return 'prep';
+    return 'post';
+  }, [events]);
 
   const handleRefresh = useCallback(() => {
     void refreshOrders();
@@ -347,22 +326,93 @@ export default function HomeScreen() {
           <View
             style={[styles.sectionCard, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}
           >
-            <Text style={[styles.sectionTitle, { color: theme.colors.textPrimary, marginBottom: 12 }]}>Quick wins</Text>
-            {suggestions.length ? (
-              <View style={{ gap: 12 }}>
-                {suggestions.map((tip) => (
-                  <View key={tip.title} style={styles.tipRow}>
-                    <Feather name={tip.icon} size={16} color={theme.colors.primary} style={{ marginRight: 8 }} />
-                    <View style={{ flex: 1 }}>
-                      <Text style={[styles.tipTitle, { color: theme.colors.textPrimary }]}>{tip.title}</Text>
-                      <Text style={{ color: theme.colors.textSecondary }}>{tip.body}</Text>
-                    </View>
-                  </View>
-                ))}
+            <Text style={[styles.sectionTitle, { color: theme.colors.textPrimary, marginBottom: 12 }]}>Event timeline</Text>
+            <View style={styles.phaseRow}>
+              <View
+                style={[styles.phaseItem, phase === 'prep' ? styles.phaseActiveContainer : styles.phaseDefault]}
+              >
+                <Feather
+                  name="clipboard"
+                  size={16}
+                  color={phase === 'prep' ? styles.phaseActiveText.color : styles.phaseDefaultText.color}
+                  style={{ marginRight: 8 }}
+                />
+                <View style={{ flex: 1 }}>
+                  <Text
+                    style={{
+                      color: phase === 'prep' ? styles.phaseActiveText.color : styles.phaseDefaultText.color,
+                      fontWeight: '600',
+                    }}
+                  >
+                    Prep
+                  </Text>
+                  <Text
+                    style={{
+                      color: phase === 'prep' ? styles.phaseActiveSubText.color : styles.phaseDefaultSubText.color,
+                      fontSize: 12,
+                    }}
+                  >
+                    Finalize inventory, signage, and staffing.
+                  </Text>
+                </View>
               </View>
-            ) : (
-              <Text style={{ color: theme.colors.textSecondary }}>Nice! You’re all caught up.</Text>
-            )}
+              <View
+                style={[styles.phaseItem, phase === 'live' ? styles.phaseActiveContainer : styles.phaseDefault]}
+              >
+                <Feather
+                  name="zap"
+                  size={16}
+                  color={phase === 'live' ? styles.phaseActiveText.color : styles.phaseDefaultText.color}
+                  style={{ marginRight: 8 }}
+                />
+                <View style={{ flex: 1 }}>
+                  <Text
+                    style={{
+                      color: phase === 'live' ? styles.phaseActiveText.color : styles.phaseDefaultText.color,
+                      fontWeight: '600',
+                    }}
+                  >
+                    Live event
+                  </Text>
+                  <Text
+                    style={{
+                      color: phase === 'live' ? styles.phaseActiveSubText.color : styles.phaseDefaultSubText.color,
+                      fontSize: 12,
+                    }}
+                  >
+                    Track sales and adjust inventory on the fly.
+                  </Text>
+                </View>
+              </View>
+              <View
+                style={[styles.phaseItem, phase === 'post' ? styles.phaseActiveContainer : styles.phaseDefault]}
+              >
+                <Feather
+                  name="check-circle"
+                  size={16}
+                  color={phase === 'post' ? styles.phaseActiveText.color : styles.phaseDefaultText.color}
+                  style={{ marginRight: 8 }}
+                />
+                <View style={{ flex: 1 }}>
+                  <Text
+                    style={{
+                      color: phase === 'post' ? styles.phaseActiveText.color : styles.phaseDefaultText.color,
+                      fontWeight: '600',
+                    }}
+                  >
+                    Wrap-up
+                  </Text>
+                  <Text
+                    style={{
+                      color: phase === 'post' ? styles.phaseActiveSubText.color : styles.phaseDefaultSubText.color,
+                      fontSize: 12,
+                    }}
+                  >
+                    Log expenses, restock, and capture notes for next time.
+                  </Text>
+                </View>
+              </View>
+            </View>
           </View>
 
           {events.length ? (
@@ -373,10 +423,15 @@ export default function HomeScreen() {
               {events.map((event) => (
                 <View key={`${event.id}-prep`} style={styles.prepCard}>
                   <View style={styles.prepHeader}>
-                    <Text style={[styles.prepTitle, { color: theme.colors.textPrimary }]}>{event.name}</Text>
-                    <Text style={{ color: theme.colors.textSecondary }}>
-                      {formatEventRange(event.startDateISO, event.endDateISO)}
-                    </Text>
+                    <View>
+                      <Text style={[styles.prepTitle, { color: theme.colors.textPrimary }]}>{event.name}</Text>
+                      <Text style={{ color: theme.colors.textSecondary }}>
+                        {formatEventRange(event.startDateISO, event.endDateISO)}
+                      </Text>
+                    </View>
+                    <Pressable onPress={() => handleRemoveEvent(event.id)} hitSlop={10}>
+                      <Feather name="trash-2" size={16} color={theme.colors.error} />
+                    </Pressable>
                   </View>
                   {event.checklist?.length ? (
                     <View style={{ gap: 8 }}>
@@ -402,20 +457,40 @@ export default function HomeScreen() {
                           >
                             {item.done ? <Feather name="check" size={12} color={theme.colors.surface} /> : null}
                           </View>
-                          <Text
-                            style={{
-                              color: item.done ? theme.colors.textMuted : theme.colors.textPrimary,
-                              textDecorationLine: item.done ? 'line-through' : 'none',
-                            }}
-                          >
-                            {item.title}
-                          </Text>
+                          <View style={{ flex: 1 }}>
+                            <Text
+                              style={{
+                                color: item.done ? theme.colors.textMuted : theme.colors.textPrimary,
+                                textDecorationLine: item.done ? 'line-through' : 'none',
+                              }}
+                            >
+                              {item.title}
+                            </Text>
+                            <Text style={{ color: theme.colors.textSecondary, fontSize: 12 }}>
+                              Tap to mark as {item.done ? 'incomplete' : 'done'}
+                            </Text>
+                          </View>
                         </Pressable>
                       ))}
                     </View>
                   ) : (
                     <Text style={{ color: theme.colors.textSecondary }}>No prep tasks yet.</Text>
                   )}
+                  <Pressable
+                    onPress={() => openDatePicker('start')}
+                    style={({ pressed }) => [
+                      styles.addTaskButton,
+                      {
+                        borderColor: theme.colors.border,
+                        opacity: pressed ? 0.85 : 1,
+                      },
+                    ]}
+                  >
+                    <Feather name="list" size={14} color={theme.colors.textSecondary} style={{ marginRight: 8 }} />
+                    <Text style={{ color: theme.colors.textSecondary, fontSize: 12 }}>
+                      Checklist auto-saves per event
+                    </Text>
+                  </Pressable>
                 </View>
               ))}
             </View>
@@ -758,6 +833,47 @@ const styles = StyleSheet.create({
   tipTitle: {
     fontSize: 15,
     fontWeight: '600',
+  },
+  phaseRow: {
+    flexDirection: 'column',
+    gap: 10,
+  },
+  phaseItem: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 12,
+    borderWidth: 1,
+    borderRadius: 12,
+    padding: 12,
+  },
+  phaseDefault: {
+    backgroundColor: 'transparent',
+  },
+  phaseActiveContainer: {
+    backgroundColor: '#272E5C',
+    borderColor: '#272E5C',
+  },
+  phaseDefaultText: {
+    color: '#131620',
+  },
+  phaseDefaultSubText: {
+    color: '#5B6171',
+  },
+  phaseActiveText: {
+    color: '#FFFFFF',
+  },
+  phaseActiveSubText: {
+    color: '#E5E8FF',
+  },
+  addTaskButton: {
+    marginTop: 12,
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
   },
   checklistRow: {
     flexDirection: 'row',
