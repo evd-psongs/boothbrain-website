@@ -476,21 +476,13 @@ export default function HomeScreen() {
                   ) : (
                     <Text style={{ color: theme.colors.textSecondary }}>No prep tasks yet.</Text>
                   )}
-                  <Pressable
-                    onPress={() => openDatePicker('start')}
-                    style={({ pressed }) => [
-                      styles.addTaskButton,
-                      {
-                        borderColor: theme.colors.border,
-                        opacity: pressed ? 0.85 : 1,
-                      },
-                    ]}
+                  <View style={[styles.addTaskButton, { borderColor: theme.colors.border }]}
                   >
                     <Feather name="list" size={14} color={theme.colors.textSecondary} style={{ marginRight: 8 }} />
                     <Text style={{ color: theme.colors.textSecondary, fontSize: 12 }}>
                       Checklist auto-saves per event
                     </Text>
-                  </Pressable>
+                  </View>
                 </View>
               ))}
             </View>
