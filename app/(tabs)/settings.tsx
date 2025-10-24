@@ -5,7 +5,6 @@ import {
   Alert,
   Image,
   Linking,
-  Modal,
   Pressable,
   ScrollView,
   Share,
@@ -23,7 +22,6 @@ import { useRouter } from 'expo-router';
 import { useSubscriptionPlans } from '@/hooks/useSubscriptionPlans';
 import { useInventory } from '@/hooks/useInventory';
 import { useEventStagedInventory } from '@/hooks/useEventStagedInventory';
-import { useUpcomingEvents, type UpcomingEvent } from '@/hooks/useUpcomingEvents';
 import { startCheckoutSession, openBillingPortal } from '@/lib/billing';
 import { updateProfile } from '@/lib/profile';
 import { deleteUserSetting, fetchUserSettings, setUserSetting } from '@/lib/settings';
@@ -145,23 +143,6 @@ function formatPlanPrice(plan: SubscriptionPlan): string {
   }
 
   return `${amount} / month`;
-}
-
-function formatEventRangeLabel(startISO?: string | null, endISO?: string | null) {
-  if (!startISO) return null;
-  try {
-    const start = new Date(startISO);
-    const end = endISO ? new Date(endISO) : null;
-    if (Number.isNaN(start.getTime())) return null;
-    const startLabel = start.toLocaleDateString();
-    if (!end || Number.isNaN(end.getTime())) {
-      return startLabel;
-    }
-    const endLabel = end.toLocaleDateString();
-    return startLabel === endLabel ? startLabel : `${startLabel} → ${endLabel}`;
-  } catch {
-    return null;
-  }
 }
 
 type InputFieldProps = {
@@ -385,12 +366,7 @@ export default function SettingsScreen() {
     isFetching: plansFetching,
   } = useSubscriptionPlans();
   const { items: inventoryItems } = useInventory(user?.id ?? null);
-  const {
-    stagedItems,
-    loading: stagedInventoryLoading,
-    refresh: refreshStagedInventory,
-  } = useEventStagedInventory(user?.id ?? null);
-  const { events: upcomingEvents } = useUpcomingEvents(user?.id ?? null);
+  const { stagedItems } = useEventStagedInventory(user?.id ?? null);
   const normalizedPlans = useMemo<SubscriptionPlan[]>(
     () => {
       const base = plansData && plansData.length ? plansData : [FALLBACK_PRO_PLAN];
@@ -428,7 +404,6 @@ export default function SettingsScreen() {
   const [openingBillingPortal, setOpeningBillingPortal] = useState(false);
   const [managingPause, setManagingPause] = useState(false);
   const [uploadingPaypalQr, setUploadingPaypalQr] = useState(false);
-  const [stagedModalVisible, setStagedModalVisible] = useState(false);
 
   useEffect(() => {
     setFullName(user?.profile?.fullName ?? '');
@@ -500,55 +475,6 @@ export default function SettingsScreen() {
     if (planItemLimit == null) return `${totalTrackedItems}`;
     return `${totalTrackedItems}/${planItemLimit}`;
   }, [planItemLimit, totalTrackedItems]);
-  const upcomingEventsMap = useMemo(() => {
-    return upcomingEvents.reduce<Record<string, UpcomingEvent>>((acc, event) => {
-      acc[event.id] = event;
-      return acc;
-    }, {});
-  }, [upcomingEvents]);
-  const stagedSummary = useMemo(() => {
-    if (!stagedItems.length)
-      return [] as Array<{
-        eventId: string | null;
-        eventName: string;
-        eventDates: string | null;
-        items: Array<{ id: string; name: string; quantity: number }>;
-      }>;
-
-    const grouped = new Map<string, typeof stagedItems>();
-    stagedItems.forEach((item) => {
-      const key = item.eventId ?? '__none__';
-      const existing = grouped.get(key) ?? [];
-      existing.push(item);
-      grouped.set(key, existing);
-    });
-
-    return Array.from(grouped.entries())
-      .map(([key, groupItems]) => {
-        const eventId = key === '__none__' ? null : key;
-        const event = eventId ? upcomingEventsMap[eventId] : undefined;
-        const sortedItems = [...groupItems].sort((a, b) => a.name.localeCompare(b.name));
-        return {
-          eventId,
-          eventName: event?.name ?? 'Unassigned event',
-          eventDates: event ? formatEventRangeLabel(event.startDateISO, event.endDateISO) : null,
-          items: sortedItems.map((entry) => ({
-            id: entry.id,
-            name: entry.name,
-            quantity: entry.quantity ?? 0,
-          })),
-          sortTime: event ? new Date(event.startDateISO).getTime() : Number.POSITIVE_INFINITY,
-        };
-      })
-      .sort((a, b) => {
-        if (a.sortTime !== b.sortTime) {
-          return a.sortTime - b.sortTime;
-        }
-        return a.eventName.localeCompare(b.eventName);
-      })
-      .map(({ sortTime: _sortTime, ...rest }) => rest);
-  }, [stagedItems, upcomingEventsMap]);
-  const hasStagedItems = stagedItemCount > 0;
   const subscriptionStatus = useMemo(() => formatStatus(subscription?.status ?? null), [subscription?.status]);
   const trialDaysRemaining = useMemo(() => calculateDaysRemaining(subscription?.trialEndsAt ?? null), [
     subscription?.trialEndsAt,
@@ -898,15 +824,6 @@ export default function SettingsScreen() {
     });
   }, [showFeedback]);
 
-  const openStagedModal = useCallback(() => {
-    setStagedModalVisible(true);
-    void refreshStagedInventory();
-  }, [refreshStagedInventory]);
-
-  const closeStagedModal = useCallback(() => {
-    setStagedModalVisible(false);
-  }, []);
-
   useEffect(() => {
     if (loading) return;
     if (!user) {
@@ -1228,17 +1145,6 @@ export default function SettingsScreen() {
             />
           </View>
 
-          <SecondaryButton
-            style={styles.fullWidthButton}
-            title={hasStagedItems ? `View staged items (${stagedItemCount})` : 'View staged items'}
-            onPress={openStagedModal}
-            disabled={stagedInventoryLoading}
-            loading={stagedInventoryLoading}
-            backgroundColor="transparent"
-            borderColor={theme.colors.border}
-            textColor={hasStagedItems ? theme.colors.textPrimary : theme.colors.textSecondary}
-          />
-
           {canManagePause ? (
             <View
               style={[styles.pauseCard, {
@@ -1435,78 +1341,6 @@ export default function SettingsScreen() {
         </View>
       </ScrollView>
 
-      <Modal
-        visible={stagedModalVisible}
-        transparent
-        animationType="fade"
-        onRequestClose={closeStagedModal}
-      >
-        <View style={styles.modalOverlay}>
-          <View
-            style={[styles.modalCard, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}
-          >
-            <View style={styles.modalHeader}>
-              <Text style={[styles.modalTitle, { color: theme.colors.textPrimary }]}>Staged items</Text>
-              <Pressable onPress={closeStagedModal} hitSlop={12}>
-                <Text style={{ color: theme.colors.primary, fontWeight: '600' }}>Close</Text>
-              </Pressable>
-            </View>
-            <Text style={[styles.modalSubtitle, { color: theme.colors.textSecondary }]}
-            >
-              {hasStagedItems
-                ? `You have ${stagedItemCount} staged item${stagedItemCount === 1 ? '' : 's'} ready to load.`
-                : 'No items are staged right now.'}
-            </Text>
-            {stagedInventoryLoading ? (
-              <View style={styles.modalEmpty}>
-                <ActivityIndicator color={theme.colors.primary} />
-              </View>
-            ) : hasStagedItems ? (
-              <ScrollView
-                style={styles.modalScroll}
-                contentContainerStyle={styles.modalList}
-                showsVerticalScrollIndicator={false}
-              >
-                {stagedSummary.map((entry) => (
-                  <View
-                    key={entry.eventId ?? 'no-event'}
-                    style={[styles.modalEventCard, { borderColor: theme.colors.border }]}
-                  >
-                    <Text style={[styles.modalEventTitle, { color: theme.colors.textPrimary }]}>
-                      {entry.eventName}
-                    </Text>
-                    <Text style={[styles.modalEventSubtitle, { color: theme.colors.textSecondary }]}
-                    >
-                      {entry.eventDates
-                        ? `${entry.eventDates} • ${entry.items.length} item${entry.items.length === 1 ? '' : 's'} staged`
-                        : `${entry.items.length} item${entry.items.length === 1 ? '' : 's'} staged`}
-                    </Text>
-                    {entry.items.map((item) => (
-                      <View key={item.id} style={styles.modalItemRow}>
-                        <Text style={[styles.modalItemName, { color: theme.colors.textPrimary }]}>{item.name}</Text>
-                        <Text style={[styles.modalItemMeta, { color: theme.colors.textSecondary }]}>Qty {item.quantity}</Text>
-                      </View>
-                    ))}
-                  </View>
-                ))}
-              </ScrollView>
-            ) : (
-              <View style={styles.modalEmpty}>
-                <Text style={[styles.modalEmptyText, { color: theme.colors.textSecondary }]}>Nothing staged yet.</Text>
-              </View>
-            )}
-
-            <View style={styles.modalFooter}>
-              <PrimaryButton
-                title="Done"
-                onPress={closeStagedModal}
-                backgroundColor={theme.colors.primary}
-                textColor={theme.colors.surface}
-              />
-            </View>
-          </View>
-        </View>
-      </Modal>
     </SafeAreaView>
   );
 }
@@ -1646,81 +1480,6 @@ const styles = StyleSheet.create({
   },
   inlineActionButtonLast: {
     marginRight: 0,
-  },
-  fullWidthButton: {
-    marginTop: 4,
-  },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.45)',
-    justifyContent: 'center',
-    padding: 24,
-  },
-  modalCard: {
-    borderWidth: 1,
-    borderRadius: 16,
-    padding: 20,
-    maxHeight: '80%',
-  },
-  modalHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 8,
-  },
-  modalTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-  },
-  modalSubtitle: {
-    fontSize: 13,
-    marginBottom: 12,
-  },
-  modalScroll: {
-    flexGrow: 0,
-  },
-  modalList: {
-    paddingBottom: 12,
-  },
-  modalEventCard: {
-    borderWidth: 1,
-    borderRadius: 12,
-    padding: 12,
-    marginBottom: 12,
-  },
-  modalEventTitle: {
-    fontSize: 15,
-    fontWeight: '600',
-  },
-  modalEventSubtitle: {
-    fontSize: 12,
-    marginTop: 4,
-  },
-  modalItemRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginTop: 8,
-  },
-  modalItemName: {
-    flex: 1,
-    fontSize: 14,
-    fontWeight: '500',
-    marginRight: 12,
-  },
-  modalItemMeta: {
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  modalEmpty: {
-    alignItems: 'center',
-    paddingVertical: 24,
-  },
-  modalEmptyText: {
-    fontSize: 14,
-  },
-  modalFooter: {
-    marginTop: 12,
   },
   notice: {
     borderWidth: 1,
