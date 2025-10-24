@@ -1,6 +1,4 @@
 import { serve } from 'https://deno.land/std@0.224.0/http/server.ts';
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.45.4?target=deno';
-
 import { stripeRequest, stripeGet } from '../_shared/stripe.ts';
 
 type PauseAction = 'pause' | 'resume';
@@ -10,14 +8,6 @@ type PauseRequest = {
   userId?: string;
 };
 
-const supabaseUrl = Deno.env.get('SUPABASE_URL');
-const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
-
-if (!supabaseUrl) throw new Error('Missing SUPABASE_URL');
-if (!serviceRoleKey) throw new Error('Missing SUPABASE_SERVICE_ROLE_KEY');
-
-const supabaseAdmin = createClient(supabaseUrl, serviceRoleKey);
-
 const json = (body: Record<string, unknown>, status = 200) =>
   new Response(JSON.stringify(body), {
     status,
@@ -25,6 +15,66 @@ const json = (body: Record<string, unknown>, status = 200) =>
   });
 
 const toIso = (value?: number | null) => (value ? new Date(value * 1000).toISOString() : null);
+
+const supabaseUrl = Deno.env.get('SUPABASE_URL');
+const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+
+if (!supabaseUrl) throw new Error('Missing SUPABASE_URL');
+if (!serviceRoleKey) throw new Error('Missing SUPABASE_SERVICE_ROLE_KEY');
+
+const restHeaders = {
+  apikey: serviceRoleKey,
+  Authorization: `Bearer ${serviceRoleKey}`,
+};
+
+type SubscriptionRow = {
+  id: string;
+  stripe_subscription_id: string | null;
+  status: string | null;
+};
+
+async function fetchSubscription(userId: string): Promise<SubscriptionRow | null> {
+  const url = new URL(`${supabaseUrl}/rest/v1/subscriptions`);
+  url.searchParams.set('user_id', `eq.${userId}`);
+  url.searchParams.set('select', 'id,stripe_subscription_id,status');
+  url.searchParams.set('limit', '1');
+
+  const response = await fetch(url, {
+    headers: {
+      ...restHeaders,
+      Accept: 'application/json',
+    },
+  });
+
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(text || 'Failed to load subscription.');
+  }
+
+  const body = (await response.json()) as SubscriptionRow[];
+  if (!Array.isArray(body) || !body.length) return null;
+  return body[0] ?? null;
+}
+
+async function updateSubscription(id: string, payload: Record<string, unknown>): Promise<void> {
+  const url = new URL(`${supabaseUrl}/rest/v1/subscriptions`);
+  url.searchParams.set('id', `eq.${id}`);
+
+  const response = await fetch(url, {
+    method: 'PATCH',
+    headers: {
+      ...restHeaders,
+      'Content-Type': 'application/json',
+      Prefer: 'return=minimal',
+    },
+    body: JSON.stringify(payload),
+  });
+
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(text || 'Failed to update subscription.');
+  }
+}
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -46,12 +96,7 @@ serve(async (req) => {
       return json({ error: 'userId is required.' }, 400);
     }
 
-    const { data: subscription, error } = await supabaseAdmin
-      .from('subscriptions')
-      .select('id, stripe_subscription_id, status')
-      .eq('user_id', userId)
-      .maybeSingle();
-    if (error) throw error;
+    const subscription = await fetchSubscription(userId);
     if (!subscription || !subscription.stripe_subscription_id) {
       return json({ error: 'Stripe subscription not configured.' }, 400);
     }
@@ -86,12 +131,7 @@ serve(async (req) => {
       updatePayload.paused_at = null;
     }
 
-    const { error: updateError } = await supabaseAdmin
-      .from('subscriptions')
-      .update(updatePayload)
-      .eq('id', subscription.id);
-
-    if (updateError) throw updateError;
+    await updateSubscription(subscription.id, updatePayload);
 
     return json({ status: updatedSubscription.status });
   } catch (error) {
