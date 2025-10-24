@@ -20,8 +20,6 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 
 import { useSubscriptionPlans } from '@/hooks/useSubscriptionPlans';
-import { useInventory } from '@/hooks/useInventory';
-import { useEventStagedInventory } from '@/hooks/useEventStagedInventory';
 import { startCheckoutSession, openBillingPortal } from '@/lib/billing';
 import { updateProfile } from '@/lib/profile';
 import { deleteUserSetting, fetchUserSettings, setUserSetting } from '@/lib/settings';
@@ -76,9 +74,6 @@ const DEFAULT_PAYMENT_VALUES: PaymentValues = {
   cashAppTag: '',
   paypalQrUri: '',
 };
-
-const FREE_PLAN_ITEM_LIMIT = 5;
-const PAUSED_PLAN_ITEM_LIMIT = 3;
 
 const FALLBACK_PRO_PLAN: SubscriptionPlan = {
   id: 'fallback-pro-plan',
@@ -365,8 +360,6 @@ export default function SettingsScreen() {
     isLoading: plansLoading,
     isFetching: plansFetching,
   } = useSubscriptionPlans();
-  const { items: inventoryItems } = useInventory(user?.id ?? null);
-  const { stagedItems } = useEventStagedInventory(user?.id ?? null);
   const normalizedPlans = useMemo<SubscriptionPlan[]>(
     () => {
       const base = plansData && plansData.length ? plansData : [FALLBACK_PRO_PLAN];
@@ -459,23 +452,6 @@ export default function SettingsScreen() {
 
   const subscription = user?.subscription ?? null;
   const currentPlanTier = subscription?.plan?.tier ?? 'free';
-  const planPaused = Boolean(subscription?.pausedAt);
-  const planItemLimit = useMemo(() => {
-    if (planPaused) return PAUSED_PLAN_ITEM_LIMIT;
-    if (currentPlanTier === 'free') return FREE_PLAN_ITEM_LIMIT;
-    const fromPlan = subscription?.plan?.maxInventoryItems;
-    return typeof fromPlan === 'number' && fromPlan > 0 ? fromPlan : null;
-  }, [currentPlanTier, planPaused, subscription?.plan?.maxInventoryItems]);
-  const stagedItemCount = stagedItems.length;
-  const totalTrackedItems = useMemo(
-    () => inventoryItems.length + stagedItemCount,
-    [inventoryItems.length, stagedItemCount],
-  );
-  const trackedItemsLabel = useMemo(() => {
-    if (planItemLimit == null) return `${totalTrackedItems}`;
-    return `${totalTrackedItems}/${planItemLimit}`;
-  }, [planItemLimit, totalTrackedItems]);
-  const subscriptionStatus = useMemo(() => formatStatus(subscription?.status ?? null), [subscription?.status]);
   const trialDaysRemaining = useMemo(() => calculateDaysRemaining(subscription?.trialEndsAt ?? null), [
     subscription?.trialEndsAt,
   ]);
@@ -491,7 +467,6 @@ export default function SettingsScreen() {
   const subscriptionDetails = useMemo(() => {
     const rows: Array<{ label: string; value: string }> = [];
     rows.push({ label: 'Plan tier', value: planName });
-    rows.push({ label: 'Items tracked', value: trackedItemsLabel });
     if (priceDescription) {
       rows.push({ label: 'Price', value: priceDescription });
     }
@@ -505,7 +480,7 @@ export default function SettingsScreen() {
       });
     }
     return rows;
-  }, [planName, priceDescription, subscription?.currentPeriodEnd, trialDaysRemaining, trackedItemsLabel]);
+  }, [planName, priceDescription, subscription?.currentPeriodEnd, trialDaysRemaining]);
 
   const isSubscriptionPaused = Boolean(subscription?.pausedAt);
   const canManagePause = Boolean(subscription?.id && currentPlanTier !== 'free');
@@ -1104,9 +1079,6 @@ export default function SettingsScreen() {
                 <Text style={[styles.freeLimitNotice, { color: theme.colors.textSecondary }]}>Free accounts can track up to 5 total items across inventory and staging.</Text>
               ) : null}
             </View>
-            <View style={[styles.chip, { backgroundColor: 'rgba(101, 88, 245, 0.12)', borderColor: theme.colors.primary }]}>
-              <Text style={[styles.chipText, { color: theme.colors.primary }]}>{subscriptionStatus}</Text>
-            </View>
           </View>
 
           {isSubscriptionPaused ? (
@@ -1461,16 +1433,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     flexWrap: 'wrap',
     marginTop: 16,
-  },
-  chip: {
-    borderWidth: 1,
-    borderRadius: 999,
-    paddingVertical: 6,
-    paddingHorizontal: 12,
-  },
-  chipText: {
-    fontSize: 13,
-    fontWeight: '600',
   },
   inlineActionButton: {
     flex: 1,
