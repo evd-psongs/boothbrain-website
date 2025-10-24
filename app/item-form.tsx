@@ -20,6 +20,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { useTheme } from '@/providers/ThemeProvider';
 import { useSupabaseAuth } from '@/providers/SupabaseAuthProvider';
 import { useInventory } from '@/hooks/useInventory';
+import { useEventStagedInventory } from '@/hooks/useEventStagedInventory';
 import { createInventoryItem, deleteInventoryItem, getInventoryItem, updateInventoryItem } from '@/lib/inventory';
 import {
   createEventStagedInventoryItem,
@@ -30,9 +31,7 @@ import {
 } from '@/lib/eventStagedInventory';
 import { getItemImagePublicUrl, removeItemImage, uploadItemImage } from '@/lib/itemImages';
 import type { EventStagedInventoryItem } from '@/types/inventory';
-
-const FREE_PLAN_ITEM_LIMIT = 5;
-const PAUSED_PLAN_ITEM_LIMIT = 3;
+import { FREE_PLAN_ITEM_LIMIT } from '@/lib/freePlanLimits';
 
 type FormMode = 'inventory' | 'stage' | 'convert';
 
@@ -92,11 +91,12 @@ export default function ItemFormScreen() {
   const editingStagedItem = !isInventoryMode && Boolean(stagingTargetId);
 
   const { items } = useInventory(userId);
+  const { stagedItems } = useEventStagedInventory(userId);
 
   const planTier = user?.subscription?.plan?.tier ?? 'free';
   const planPaused = Boolean(user?.subscription?.pausedAt);
   const planItemLimit = useMemo(() => {
-    if (planPaused) return PAUSED_PLAN_ITEM_LIMIT;
+    if (planPaused) return FREE_PLAN_ITEM_LIMIT;
     if (planTier === 'free') return FREE_PLAN_ITEM_LIMIT;
     const fromPlan = user?.subscription?.plan?.maxInventoryItems;
     return typeof fromPlan === 'number' && fromPlan > 0 ? fromPlan : null;
@@ -223,13 +223,27 @@ export default function ItemFormScreen() {
     };
   }, [editingInventoryItem, editingStagedItem, isConvertMode, itemId, stagingTargetId, userId]);
 
-  const currentItemCount = items.length;
-  const enforcePlanLimit = isInventoryMode || isConvertMode;
+  const enforcePlanLimit = isInventoryMode || isConvertMode || isStagingMode;
+  const stagedItemCount = useMemo(
+    () => (Array.isArray(stagedItems) ? stagedItems.length : 0),
+    [stagedItems],
+  );
+  const totalTrackedCount = items.length + stagedItemCount;
+  const baselineTrackedCount = useMemo(() => {
+    if (!enforcePlanLimit) return totalTrackedCount;
+    let count = totalTrackedCount;
+    if (isInventoryMode && editingInventoryItem) {
+      count = Math.max(count - 1, 0);
+    }
+    if ((isStagingMode || isConvertMode) && editingStagedItem) {
+      count = Math.max(count - 1, 0);
+    }
+    return count;
+  }, [editingInventoryItem, editingStagedItem, enforcePlanLimit, isConvertMode, isInventoryMode, isStagingMode, totalTrackedCount]);
   const remainingSlots = useMemo(() => {
     if (planItemLimit == null || !enforcePlanLimit) return null;
-    const baseline = editingInventoryItem ? currentItemCount - 1 : currentItemCount;
-    return Math.max(planItemLimit - baseline, 0);
-  }, [planItemLimit, currentItemCount, editingInventoryItem, enforcePlanLimit]);
+    return Math.max(planItemLimit - baselineTrackedCount, 0);
+  }, [baselineTrackedCount, enforcePlanLimit, planItemLimit]);
 
   const headerTitle = useMemo(() => {
     if (isInventoryMode) {
@@ -252,6 +266,12 @@ export default function ItemFormScreen() {
     if (isInventoryMode) return 'Delete item';
     return 'Remove staged item';
   }, [isInventoryMode]);
+  const showPlanNotice = remainingSlots != null
+    && enforcePlanLimit
+    && (
+      (isInventoryMode && !editingInventoryItem)
+      || (isStagingMode && !editingStagedItem)
+    );
 
   const handleChange = useCallback((key: keyof FormState, value: string) => {
     setForm((prev) => ({ ...prev, [key]: value }));
@@ -347,13 +367,16 @@ export default function ItemFormScreen() {
       return;
     }
 
-    if (
-      enforcePlanLimit
-      && !editingInventoryItem
-      && planItemLimit != null
-      && currentItemCount >= planItemLimit
-    ) {
-      setFeedback({ type: 'error', message: `Your plan allows up to ${planItemLimit} items.` });
+    const willCreateNew =
+      (isInventoryMode && !editingInventoryItem)
+      || (isStagingMode && !editingStagedItem)
+      || (isConvertMode && Boolean(stagingTargetId));
+
+    if (enforcePlanLimit && planItemLimit != null && willCreateNew && baselineTrackedCount >= planItemLimit) {
+      setFeedback({
+        type: 'error',
+        message: `Your plan allows up to ${planItemLimit} total items across inventory and staging.`,
+      });
       return;
     }
 
@@ -514,7 +537,7 @@ export default function ItemFormScreen() {
     editingInventoryItem,
     editingStagedItem,
     planItemLimit,
-    currentItemCount,
+    baselineTrackedCount,
     stagingTargetId,
     itemId,
     images,
@@ -644,11 +667,12 @@ export default function ItemFormScreen() {
 
           {feedback ? <FeedbackBanner feedback={feedback} colors={theme.colors} /> : null}
 
-          {remainingSlots != null && !editingInventoryItem && isInventoryMode ? (
-            <View style={[styles.notice, { borderColor: theme.colors.border, backgroundColor: theme.colors.surface }]}
+          {showPlanNotice ? (
+            <View
+              style={[styles.notice, { borderColor: theme.colors.border, backgroundColor: theme.colors.surface }]}
             >
               <Feather name="info" size={14} color={theme.colors.textSecondary} />
-              <Text style={[styles.noticeText, { color: theme.colors.textSecondary }]}>You can add {remainingSlots} more item{remainingSlots === 1 ? '' : 's'} on your plan.</Text>
+              <Text style={[styles.noticeText, { color: theme.colors.textSecondary }]}>You can add {remainingSlots} more item{remainingSlots === 1 ? '' : 's'} across inventory and staging on your plan.</Text>
             </View>
           ) : null}
 

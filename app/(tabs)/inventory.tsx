@@ -31,6 +31,7 @@ import { createInventoryItem, updateInventoryItem } from '@/lib/inventory';
 import { updateEventStagedInventoryStatus, loadStagedInventoryItems } from '@/lib/eventStagedInventory';
 import { formatCurrencyFromCents } from '@/utils/currency';
 import { StagedInventoryModal } from '@/components/StagedInventoryModal';
+import { FREE_PLAN_ITEM_LIMIT } from '@/lib/freePlanLimits';
 
 type FeedbackState = {
   type: 'success' | 'error' | 'info';
@@ -68,9 +69,6 @@ type InventoryListItemProps = {
   onPress: (item: InventoryItem) => void;
   themeColors: ReturnType<typeof useTheme>['theme']['colors'];
 };
-
-const FREE_PLAN_ITEM_LIMIT = 5;
-const PAUSED_PLAN_ITEM_LIMIT = 3;
 
 export default function InventoryScreen() {
   const router = useRouter();
@@ -133,7 +131,7 @@ export default function InventoryScreen() {
   const planTier = user?.subscription?.plan?.tier ?? 'free';
   const planPaused = Boolean(user?.subscription?.pausedAt);
   const planItemLimit = useMemo(() => {
-    if (planPaused) return PAUSED_PLAN_ITEM_LIMIT;
+    if (planPaused) return FREE_PLAN_ITEM_LIMIT;
     if (planTier === 'free') return FREE_PLAN_ITEM_LIMIT;
     const fromPlan = user?.subscription?.plan?.maxInventoryItems;
     return typeof fromPlan === 'number' && fromPlan > 0 ? fromPlan : null;
@@ -174,6 +172,12 @@ export default function InventoryScreen() {
       return aTime - bTime;
     });
   }, [eventsById, stagedByEvent]);
+
+  const totalStagedCount = useMemo(() => {
+    return Object.values(stagedByEvent).reduce((sum, list) => sum + list.length, 0);
+  }, [stagedByEvent]);
+
+  const totalTrackedCount = useMemo(() => items.length + totalStagedCount, [items.length, totalStagedCount]);
 
   const stagedModalItems = useMemo(() => {
     if (!stagedModalEventId) return [];
@@ -246,12 +250,10 @@ export default function InventoryScreen() {
   );
 
   const stats = useMemo<SummaryStat[]>(() => {
-    const total = items.length;
-
     return [
       {
         label: 'Total items',
-        value: planItemLimit != null ? `${total}/${planItemLimit}` : total,
+        value: planItemLimit != null ? `${totalTrackedCount}/${planItemLimit}` : totalTrackedCount,
         icon: 'box',
         accent: theme.colors.primary,
         subtle: 'rgba(248, 249, 255, 0.18)',
@@ -277,7 +279,7 @@ export default function InventoryScreen() {
         filter: 'out',
       },
     ];
-  }, [items, lowStockItems.length, outOfStockItems.length, planItemLimit, theme.colors.error, theme.colors.primary, theme.colors.warning]);
+  }, [lowStockItems.length, outOfStockItems.length, planItemLimit, theme.colors.error, theme.colors.primary, theme.colors.warning, totalTrackedCount]);
 
   const filteredItems = useMemo(() => {
     const base =
@@ -387,7 +389,7 @@ export default function InventoryScreen() {
             await updateInventoryItem({ userId, itemId: existing.id, input });
             updated += 1;
           } else {
-            if (planItemLimit != null && items.length + created >= planItemLimit) {
+            if (planItemLimit != null && totalTrackedCount + created >= planItemLimit) {
               skipped.push(`${row.name} (plan limit reached)`);
               continue;
             }
@@ -417,7 +419,7 @@ export default function InventoryScreen() {
 
       setFeedback({ type: skipped.length ? 'info' : 'success', message });
     },
-    [items, currentSession?.eventId, planItemLimit, refresh, userId],
+    [items, currentSession?.eventId, planItemLimit, refresh, totalTrackedCount, userId],
   );
 
   const handleImportCsv = useCallback(async () => {
