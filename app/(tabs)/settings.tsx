@@ -29,6 +29,7 @@ import { useSupabaseAuth } from '@/providers/SupabaseAuthProvider';
 import { useTheme } from '@/providers/ThemeProvider';
 import { formatCurrencyFromCents } from '@/utils/currency';
 import type { SubscriptionPlan } from '@/types/auth';
+import { enforceFreePlanLimits, FREE_PLAN_ITEM_LIMIT } from '@/lib/freePlanLimits';
 import * as ImagePicker from 'expo-image-picker';
 
 type FeedbackState = {
@@ -452,15 +453,17 @@ export default function SettingsScreen() {
 
   const subscription = user?.subscription ?? null;
   const currentPlanTier = subscription?.plan?.tier ?? 'free';
+  const isSubscriptionPaused = Boolean(subscription?.pausedAt);
   const trialDaysRemaining = useMemo(() => calculateDaysRemaining(subscription?.trialEndsAt ?? null), [
     subscription?.trialEndsAt,
   ]);
 
   const planName = useMemo(() => {
+    if (isSubscriptionPaused) return 'Free';
     if (subscription?.plan?.name) return subscription.plan.name;
     if (currentPlanTier) return formatStatus(currentPlanTier);
     return 'Free';
-  }, [subscription?.plan, currentPlanTier]);
+  }, [subscription?.plan, currentPlanTier, isSubscriptionPaused]);
 
   const priceDescription = subscription?.plan ? formatPlanPrice(subscription.plan) : null;
 
@@ -481,8 +484,6 @@ export default function SettingsScreen() {
     }
     return rows;
   }, [planName, priceDescription, subscription?.currentPeriodEnd, trialDaysRemaining]);
-
-  const isSubscriptionPaused = Boolean(subscription?.pausedAt);
   const canManagePause = Boolean(subscription?.id && currentPlanTier !== 'free');
   const availablePlans = useMemo(
     () => normalizedPlans.filter((plan) => plan.tier !== currentPlanTier),
@@ -490,6 +491,7 @@ export default function SettingsScreen() {
   );
   const canOpenBillingPortal = Boolean(subscription?.id);
   const showPlansSpinner = (plansLoading || plansFetching) && !(plansData && plansData.length);
+  const showFreeLimitNotice = currentPlanTier === 'free' || isSubscriptionPaused;
 
   const profileDirty = useMemo(() => {
     const initialName = user?.profile?.fullName ?? '';
@@ -615,25 +617,65 @@ export default function SettingsScreen() {
     }
   }, [user?.id, canOpenBillingPortal, showFeedback]);
 
-  const handleManagePause = useCallback(async () => {
-    if (!user?.id || !canManagePause) return;
-    setManagingPause(true);
-    try {
-      if (isSubscriptionPaused) {
-        await resumeSubscription(user.id);
-        showFeedback({ type: 'success', message: 'Subscription resumed.' });
-      } else {
-        await pauseSubscription(user.id);
-        showFeedback({ type: 'success', message: 'Subscription paused.' });
+  const applyPauseState = useCallback(
+    async (mode: 'pause' | 'resume') => {
+      if (!user?.id || !canManagePause) return;
+      setManagingPause(true);
+      try {
+        if (mode === 'resume') {
+          await resumeSubscription(user.id);
+          showFeedback({ type: 'success', message: 'Subscription resumed.' });
+        } else {
+          await pauseSubscription(user.id);
+          const { removedInventory, removedStaged } = await enforceFreePlanLimits(user.id);
+
+          let notice = 'Subscription paused. Your account now matches the Free plan limits.';
+          const removalParts: string[] = [];
+          if (removedInventory > 0) {
+            removalParts.push(`${removedInventory} inventory item${removedInventory === 1 ? '' : 's'}`);
+          }
+          if (removedStaged > 0) {
+            removalParts.push(`${removedStaged} staged item${removedStaged === 1 ? '' : 's'}`);
+          }
+          if (removalParts.length) {
+            notice = `${notice} Removed ${removalParts.join(' and ')}.`;
+          }
+          showFeedback({ type: 'success', message: notice });
+        }
+        await refreshSession();
+      } catch (error: any) {
+        console.error('Failed to update subscription pause state', error);
+        showFeedback({ type: 'error', message: error?.message ?? 'Failed to update subscription.' });
+      } finally {
+        setManagingPause(false);
       }
-      await refreshSession();
-    } catch (error: any) {
-      console.error('Failed to update subscription pause state', error);
-      showFeedback({ type: 'error', message: error?.message ?? 'Failed to update subscription.' });
-    } finally {
-      setManagingPause(false);
+    },
+    [user?.id, canManagePause, refreshSession, showFeedback],
+  );
+
+  const handleManagePause = useCallback(() => {
+    if (!user?.id || !canManagePause) return;
+
+    if (isSubscriptionPaused) {
+      void applyPauseState('resume');
+      return;
     }
-  }, [user?.id, canManagePause, isSubscriptionPaused, refreshSession, showFeedback]);
+
+    Alert.alert(
+      'Pause subscription?',
+      `Pausing will downgrade you to the Free plan. Only your ${FREE_PLAN_ITEM_LIMIT} most recent items will remain and the rest will be permanently removed. Export or back up your inventory before continuing.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Pause subscription',
+          style: 'destructive',
+          onPress: () => {
+            void applyPauseState('pause');
+          },
+        },
+      ],
+    );
+  }, [user?.id, canManagePause, isSubscriptionPaused, applyPauseState]);
 
   const handleSaveProfile = useCallback(async () => {
     if (!user?.id) return;
@@ -1075,8 +1117,12 @@ export default function SettingsScreen() {
                 titleColor={theme.colors.textPrimary}
                 subtitleColor={theme.colors.textSecondary}
               />
-              {currentPlanTier === 'free' ? (
-                <Text style={[styles.freeLimitNotice, { color: theme.colors.textSecondary }]}>Free accounts can track up to 5 total items across inventory and staging.</Text>
+              {showFreeLimitNotice ? (
+                <Text style={[styles.freeLimitNotice, { color: theme.colors.textSecondary }]}>
+                  {isSubscriptionPaused
+                    ? `While paused, only your ${FREE_PLAN_ITEM_LIMIT} most recent items are kept.`
+                    : `Free accounts can track up to ${FREE_PLAN_ITEM_LIMIT} total items across inventory and staging.`}
+                </Text>
               ) : null}
             </View>
           </View>
