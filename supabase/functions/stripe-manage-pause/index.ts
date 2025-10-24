@@ -1,4 +1,3 @@
-import { serve } from 'https://deno.land/std@0.224.0/http/server.ts';
 import { stripeRequest, stripeGet } from '../_shared/stripe.ts';
 
 type PauseAction = 'pause' | 'resume';
@@ -31,12 +30,14 @@ type SubscriptionRow = {
   id: string;
   stripe_subscription_id: string | null;
   status: string | null;
+  paused_at: string | null;
+  pause_used_period_start: string | null;
 };
 
 async function fetchSubscription(userId: string): Promise<SubscriptionRow | null> {
   const url = new URL(`${supabaseUrl}/rest/v1/subscriptions`);
   url.searchParams.set('user_id', `eq.${userId}`);
-  url.searchParams.set('select', 'id,stripe_subscription_id,status');
+  url.searchParams.set('select', 'id,stripe_subscription_id,status,paused_at,pause_used_period_start');
   url.searchParams.set('limit', '1');
 
   const response = await fetch(url, {
@@ -76,7 +77,7 @@ async function updateSubscription(id: string, payload: Record<string, unknown>):
   }
 }
 
-serve(async (req) => {
+Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { status: 200 });
   }
@@ -101,11 +102,31 @@ serve(async (req) => {
       return json({ error: 'Stripe subscription not configured.' }, 400);
     }
 
+    const stripeSubscription = await stripeGet(`subscriptions/${subscription.stripe_subscription_id}`);
+    const currentPeriodStartIso = toIso(stripeSubscription.current_period_start);
+
+    const parseIso = (value?: string | null) => (value ? Date.parse(value) : null);
+    const pauseUsedThisPeriod = Boolean(
+      currentPeriodStartIso
+      && parseIso(subscription.pause_used_period_start) === parseIso(currentPeriodStartIso),
+    );
+
     if (action === 'pause') {
+      if (stripeSubscription.pause_collection) {
+        return json({ error: 'Subscription is already paused.' }, 400);
+      }
+      if (pauseUsedThisPeriod) {
+        return json({ error: 'Pause allowance used for this billing period.' }, 400);
+      }
+
       await stripeRequest(`subscriptions/${subscription.stripe_subscription_id}`, {
         'pause_collection[behavior]': 'keep_as_draft',
       });
     } else {
+      if (!stripeSubscription.pause_collection) {
+        return json({ error: 'Subscription is not paused.' }, 400);
+      }
+
       await stripeRequest(`subscriptions/${subscription.stripe_subscription_id}`, {
         'pause_collection': '',
       });
