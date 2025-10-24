@@ -13,6 +13,7 @@ export default [
       'coverage/**',
       'supabase/bundles/**',
       'pics/**',
+      'BoothBrain/**',
     ],
   },
   {

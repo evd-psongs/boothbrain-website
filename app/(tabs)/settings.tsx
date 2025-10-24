@@ -1,22 +1,29 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
+  Animated,
   ActivityIndicator,
   Alert,
   Image,
   Linking,
+  Modal,
   Pressable,
   ScrollView,
   Share,
+  StyleProp,
   StyleSheet,
   Text,
   TextInput,
   View,
+  ViewStyle,
 } from 'react-native';
 import type { KeyboardTypeOptions, TextInputProps } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 
 import { useSubscriptionPlans } from '@/hooks/useSubscriptionPlans';
+import { useInventory } from '@/hooks/useInventory';
+import { useEventStagedInventory } from '@/hooks/useEventStagedInventory';
+import { useUpcomingEvents, type UpcomingEvent } from '@/hooks/useUpcomingEvents';
 import { startCheckoutSession, openBillingPortal } from '@/lib/billing';
 import { updateProfile } from '@/lib/profile';
 import { deleteUserSetting, fetchUserSettings, setUserSetting } from '@/lib/settings';
@@ -26,8 +33,7 @@ import { useSupabaseAuth } from '@/providers/SupabaseAuthProvider';
 import { useTheme } from '@/providers/ThemeProvider';
 import { formatCurrencyFromCents } from '@/utils/currency';
 import type { SubscriptionPlan } from '@/types/auth';
-import * as DocumentPicker from 'expo-document-picker';
-import { readAsStringAsync } from 'expo-file-system/legacy';
+import * as ImagePicker from 'expo-image-picker';
 
 type FeedbackState = {
   type: 'success' | 'error';
@@ -72,6 +78,9 @@ const DEFAULT_PAYMENT_VALUES: PaymentValues = {
   cashAppTag: '',
   paypalQrUri: '',
 };
+
+const FREE_PLAN_ITEM_LIMIT = 5;
+const PAUSED_PLAN_ITEM_LIMIT = 3;
 
 const FALLBACK_PRO_PLAN: SubscriptionPlan = {
   id: 'fallback-pro-plan',
@@ -138,6 +147,23 @@ function formatPlanPrice(plan: SubscriptionPlan): string {
   return `${amount} / month`;
 }
 
+function formatEventRangeLabel(startISO?: string | null, endISO?: string | null) {
+  if (!startISO) return null;
+  try {
+    const start = new Date(startISO);
+    const end = endISO ? new Date(endISO) : null;
+    if (Number.isNaN(start.getTime())) return null;
+    const startLabel = start.toLocaleDateString();
+    if (!end || Number.isNaN(end.getTime())) {
+      return startLabel;
+    }
+    const endLabel = end.toLocaleDateString();
+    return startLabel === endLabel ? startLabel : `${startLabel} → ${endLabel}`;
+  } catch {
+    return null;
+  }
+}
+
 type InputFieldProps = {
   label: string;
   value: string;
@@ -194,19 +220,65 @@ function FeedbackBanner({
   successColor: string;
   errorColor: string;
 }) {
-  if (!feedback) return null;
-  const isSuccess = feedback.type === 'success';
+  const [currentFeedback, setCurrentFeedback] = useState<FeedbackState>(null);
+  const opacity = useRef(new Animated.Value(0)).current;
+  const translateY = useRef(new Animated.Value(-16)).current;
+
+  useEffect(() => {
+    if (feedback && currentFeedback !== feedback) {
+      setCurrentFeedback(feedback);
+      opacity.stopAnimation();
+      translateY.stopAnimation();
+      opacity.setValue(0);
+      translateY.setValue(-16);
+      Animated.parallel([
+        Animated.timing(opacity, {
+          toValue: 1,
+          duration: 220,
+          useNativeDriver: true,
+        }),
+        Animated.spring(translateY, {
+          toValue: 0,
+          damping: 18,
+          mass: 0.8,
+          stiffness: 220,
+          useNativeDriver: true,
+        }),
+      ]).start();
+    } else if (!feedback && currentFeedback) {
+      Animated.parallel([
+        Animated.timing(opacity, {
+          toValue: 0,
+          duration: 200,
+          useNativeDriver: true,
+        }),
+        Animated.timing(translateY, {
+          toValue: -10,
+          duration: 200,
+          useNativeDriver: true,
+        }),
+      ]).start(() => {
+        setCurrentFeedback(null);
+        translateY.setValue(-16);
+      });
+    }
+  }, [feedback, currentFeedback, opacity, translateY]);
+
+  if (!currentFeedback) return null;
+  const isSuccess = currentFeedback.type === 'success';
+  const palette = isSuccess ? successColor : errorColor;
+
   return (
-    <View
+    <Animated.View
+      pointerEvents="none"
       style={[
-        styles.feedbackContainer,
-        isSuccess
-          ? { backgroundColor: 'rgba(45, 186, 127, 0.12)', borderColor: successColor }
-          : { backgroundColor: 'rgba(243, 105, 110, 0.12)', borderColor: errorColor },
+        styles.feedbackToast,
+        { backgroundColor: palette, borderColor: palette },
+        { opacity, transform: [{ translateY }] },
       ]}
     >
-      <Text style={[styles.feedbackText, { color: isSuccess ? successColor : errorColor }]}>{feedback.message}</Text>
-    </View>
+      <Text style={[styles.feedbackText, { color: '#fff' }]}>{currentFeedback.message}</Text>
+    </Animated.View>
   );
 }
 
@@ -264,6 +336,7 @@ function SecondaryButton({
   backgroundColor,
   borderColor,
   textColor,
+  style,
 }: {
   title: string;
   onPress: () => void;
@@ -272,6 +345,7 @@ function SecondaryButton({
   backgroundColor: string;
   borderColor: string;
   textColor: string;
+  style?: StyleProp<ViewStyle>;
 }) {
   return (
     <Pressable
@@ -279,6 +353,7 @@ function SecondaryButton({
       onPress={onPress}
       style={({ pressed }) => [
         styles.secondaryButton,
+        style,
         {
           backgroundColor,
           borderColor,
@@ -309,6 +384,13 @@ export default function SettingsScreen() {
     isLoading: plansLoading,
     isFetching: plansFetching,
   } = useSubscriptionPlans();
+  const { items: inventoryItems } = useInventory(user?.id ?? null);
+  const {
+    stagedItems,
+    loading: stagedInventoryLoading,
+    refresh: refreshStagedInventory,
+  } = useEventStagedInventory(user?.id ?? null);
+  const { events: upcomingEvents } = useUpcomingEvents(user?.id ?? null);
   const normalizedPlans = useMemo<SubscriptionPlan[]>(
     () => {
       const base = plansData && plansData.length ? plansData : [FALLBACK_PRO_PLAN];
@@ -346,6 +428,7 @@ export default function SettingsScreen() {
   const [openingBillingPortal, setOpeningBillingPortal] = useState(false);
   const [managingPause, setManagingPause] = useState(false);
   const [uploadingPaypalQr, setUploadingPaypalQr] = useState(false);
+  const [stagedModalVisible, setStagedModalVisible] = useState(false);
 
   useEffect(() => {
     setFullName(user?.profile?.fullName ?? '');
@@ -401,6 +484,71 @@ export default function SettingsScreen() {
 
   const subscription = user?.subscription ?? null;
   const currentPlanTier = subscription?.plan?.tier ?? 'free';
+  const planPaused = Boolean(subscription?.pausedAt);
+  const planItemLimit = useMemo(() => {
+    if (planPaused) return PAUSED_PLAN_ITEM_LIMIT;
+    if (currentPlanTier === 'free') return FREE_PLAN_ITEM_LIMIT;
+    const fromPlan = subscription?.plan?.maxInventoryItems;
+    return typeof fromPlan === 'number' && fromPlan > 0 ? fromPlan : null;
+  }, [currentPlanTier, planPaused, subscription?.plan?.maxInventoryItems]);
+  const stagedItemCount = stagedItems.length;
+  const totalTrackedItems = useMemo(
+    () => inventoryItems.length + stagedItemCount,
+    [inventoryItems.length, stagedItemCount],
+  );
+  const trackedItemsLabel = useMemo(() => {
+    if (planItemLimit == null) return `${totalTrackedItems}`;
+    return `${totalTrackedItems}/${planItemLimit}`;
+  }, [planItemLimit, totalTrackedItems]);
+  const upcomingEventsMap = useMemo(() => {
+    return upcomingEvents.reduce<Record<string, UpcomingEvent>>((acc, event) => {
+      acc[event.id] = event;
+      return acc;
+    }, {});
+  }, [upcomingEvents]);
+  const stagedSummary = useMemo(() => {
+    if (!stagedItems.length)
+      return [] as Array<{
+        eventId: string | null;
+        eventName: string;
+        eventDates: string | null;
+        items: Array<{ id: string; name: string; quantity: number }>;
+      }>;
+
+    const grouped = new Map<string, typeof stagedItems>();
+    stagedItems.forEach((item) => {
+      const key = item.eventId ?? '__none__';
+      const existing = grouped.get(key) ?? [];
+      existing.push(item);
+      grouped.set(key, existing);
+    });
+
+    return Array.from(grouped.entries())
+      .map(([key, groupItems]) => {
+        const eventId = key === '__none__' ? null : key;
+        const event = eventId ? upcomingEventsMap[eventId] : undefined;
+        const sortedItems = [...groupItems].sort((a, b) => a.name.localeCompare(b.name));
+        return {
+          eventId,
+          eventName: event?.name ?? 'Unassigned event',
+          eventDates: event ? formatEventRangeLabel(event.startDateISO, event.endDateISO) : null,
+          items: sortedItems.map((entry) => ({
+            id: entry.id,
+            name: entry.name,
+            quantity: entry.quantity ?? 0,
+          })),
+          sortTime: event ? new Date(event.startDateISO).getTime() : Number.POSITIVE_INFINITY,
+        };
+      })
+      .sort((a, b) => {
+        if (a.sortTime !== b.sortTime) {
+          return a.sortTime - b.sortTime;
+        }
+        return a.eventName.localeCompare(b.eventName);
+      })
+      .map(({ sortTime: _sortTime, ...rest }) => rest);
+  }, [stagedItems, upcomingEventsMap]);
+  const hasStagedItems = stagedItemCount > 0;
   const subscriptionStatus = useMemo(() => formatStatus(subscription?.status ?? null), [subscription?.status]);
   const trialDaysRemaining = useMemo(() => calculateDaysRemaining(subscription?.trialEndsAt ?? null), [
     subscription?.trialEndsAt,
@@ -417,6 +565,7 @@ export default function SettingsScreen() {
   const subscriptionDetails = useMemo(() => {
     const rows: Array<{ label: string; value: string }> = [];
     rows.push({ label: 'Plan tier', value: planName });
+    rows.push({ label: 'Items tracked', value: trackedItemsLabel });
     if (priceDescription) {
       rows.push({ label: 'Price', value: priceDescription });
     }
@@ -430,7 +579,7 @@ export default function SettingsScreen() {
       });
     }
     return rows;
-  }, [planName, priceDescription, subscription?.currentPeriodEnd, trialDaysRemaining]);
+  }, [planName, priceDescription, subscription?.currentPeriodEnd, trialDaysRemaining, trackedItemsLabel]);
 
   const isSubscriptionPaused = Boolean(subscription?.pausedAt);
   const canManagePause = Boolean(subscription?.id && currentPlanTier !== 'free');
@@ -680,10 +829,18 @@ export default function SettingsScreen() {
   const handleUploadPaypalQr = useCallback(async () => {
     try {
       setUploadingPaypalQr(true);
-      const result = await DocumentPicker.getDocumentAsync({
-        type: ['image/*'],
-        copyToCacheDirectory: true,
-        multiple: false,
+      const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (!permission.granted) {
+        showFeedback({ type: 'error', message: 'Enable photo access to upload a QR code.' });
+        return;
+      }
+
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ['images'],
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.9,
+        base64: true,
       });
 
       if (result.canceled) {
@@ -691,15 +848,16 @@ export default function SettingsScreen() {
       }
 
       const asset = result.assets?.[0];
-      if (!asset?.uri) {
-        showFeedback({ type: 'error', message: 'Unable to read selected file.' });
+      if (!asset?.base64) {
+        showFeedback({ type: 'error', message: 'Unable to process the selected image.' });
         return;
       }
 
-      const mimeType = asset.mimeType ?? 'image/png';
-      const base64 = await readAsStringAsync(asset.uri, { encoding: 'base64' });
-      const dataUrl = `data:${mimeType};base64,${base64}`;
+      const mimeType =
+        (asset as { mimeType?: string }).mimeType
+        ?? (asset.uri?.toLowerCase().endsWith('.png') ? 'image/png' : 'image/jpeg');
 
+      const dataUrl = `data:${mimeType};base64,${asset.base64}`;
       setPaymentValues((prev) => ({ ...prev, paypalQrUri: dataUrl }));
     } catch (error: any) {
       console.error('Failed to upload PayPal QR', error);
@@ -740,6 +898,15 @@ export default function SettingsScreen() {
     });
   }, [showFeedback]);
 
+  const openStagedModal = useCallback(() => {
+    setStagedModalVisible(true);
+    void refreshStagedInventory();
+  }, [refreshStagedInventory]);
+
+  const closeStagedModal = useCallback(() => {
+    setStagedModalVisible(false);
+  }, []);
+
   useEffect(() => {
     if (loading) return;
     if (!user) {
@@ -776,13 +943,12 @@ export default function SettingsScreen() {
 
   return (
     <SafeAreaView style={[styles.safeArea, { backgroundColor: theme.colors.background }] }>
+      <FeedbackBanner feedback={feedback} successColor={theme.colors.success} errorColor={theme.colors.error} />
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
         <View style={styles.header}>
           <Text style={[styles.screenTitle, { color: theme.colors.textPrimary }]}>Settings</Text>
-      <Text style={[styles.screenSubtitle, { color: theme.colors.textSecondary }]}>Manage your account details, subscription, and payment preferences.</Text>
-    </View>
-
-        <FeedbackBanner feedback={feedback} successColor={theme.colors.success} errorColor={theme.colors.error} />
+          <Text style={[styles.screenSubtitle, { color: theme.colors.textSecondary }]}>Manage your account details, subscription, and payment preferences.</Text>
+        </View>
 
         <View style={[styles.card, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }] }>
           <SectionHeading
@@ -1018,7 +1184,7 @@ export default function SettingsScreen() {
                 subtitleColor={theme.colors.textSecondary}
               />
               {currentPlanTier === 'free' ? (
-                <Text style={[styles.freeLimitNotice, { color: theme.colors.textSecondary }]}>Free accounts can track up to 5 items.</Text>
+                <Text style={[styles.freeLimitNotice, { color: theme.colors.textSecondary }]}>Free accounts can track up to 5 total items across inventory and staging.</Text>
               ) : null}
             </View>
             <View style={[styles.chip, { backgroundColor: 'rgba(101, 88, 245, 0.12)', borderColor: theme.colors.primary }]}>
@@ -1041,6 +1207,7 @@ export default function SettingsScreen() {
 
           <View style={styles.inlineActions}>
             <SecondaryButton
+              style={styles.inlineActionButton}
               title="Open billing portal"
               onPress={handleOpenBillingPortal}
               disabled={!canOpenBillingPortal || openingBillingPortal}
@@ -1050,6 +1217,7 @@ export default function SettingsScreen() {
               textColor={theme.colors.primary}
             />
             <SecondaryButton
+              style={[styles.inlineActionButton, styles.inlineActionButtonLast]}
               title="Refresh subscription"
               onPress={handleRefreshSubscription}
               disabled={refreshingAccount}
@@ -1059,6 +1227,17 @@ export default function SettingsScreen() {
               textColor={theme.colors.textPrimary}
             />
           </View>
+
+          <SecondaryButton
+            style={styles.fullWidthButton}
+            title={hasStagedItems ? `View staged items (${stagedItemCount})` : 'View staged items'}
+            onPress={openStagedModal}
+            disabled={stagedInventoryLoading}
+            loading={stagedInventoryLoading}
+            backgroundColor="transparent"
+            borderColor={theme.colors.border}
+            textColor={hasStagedItems ? theme.colors.textPrimary : theme.colors.textSecondary}
+          />
 
           {canManagePause ? (
             <View
@@ -1170,43 +1349,46 @@ export default function SettingsScreen() {
                   )}
                 </View>
 
-              <View style={styles.paypalActions}>
-                  <Pressable
-                    onPress={handleUploadPaypalQr}
+                <View style={styles.paypalActions}>
+                <Pressable
+                  onPress={handleUploadPaypalQr}
+                  disabled={uploadingPaypalQr}
+                  style={({ pressed }) => [
+                    styles.paypalUploadButton,
+                    {
+                      borderColor: theme.colors.primary,
+                      backgroundColor: pressed ? theme.colors.primary : 'transparent',
+                    },
+                    uploadingPaypalQr ? { opacity: 0.6 } : null,
+                  ]}
+                >
+                  {uploadingPaypalQr ? (
+                    <ActivityIndicator color={theme.colors.surface} />
+                  ) : (
+                    <>
+                      <Text style={[styles.paypalUploadText, { color: theme.colors.primary }]}>
+                        {paymentValues.paypalQrUri ? 'Replace QR code' : 'Upload QR code'}
+                      </Text>
+                      <Text style={[styles.paypalUploadHint, { color: theme.colors.textMuted }]}>
+                        PNG or JPG, crop before saving.
+                      </Text>
+                    </>
+                  )}
+                </Pressable>
+                {paymentValues.paypalQrUri ? (
+                  <SecondaryButton
+                    style={styles.paypalRemoveButton}
+                    title="Remove QR code"
+                    onPress={handleRemovePaypalQr}
                     disabled={uploadingPaypalQr}
-                    style={({ pressed }) => [
-                      styles.paypalUploadButton,
-                      {
-                        borderColor: theme.colors.primary,
-                        backgroundColor: pressed ? theme.colors.primary : 'transparent',
-                      },
-                      uploadingPaypalQr ? { opacity: 0.6 } : null,
-                    ]}
-                  >
-                    {uploadingPaypalQr ? (
-                      <ActivityIndicator color={theme.colors.surface} />
-                    ) : (
-                      <>
-                        <Text style={[styles.paypalUploadText, { color: theme.colors.primary }]}>
-                          {paymentValues.paypalQrUri ? 'Replace QR code' : 'Upload QR code'}
-                        </Text>
-                        <Text style={[styles.paypalUploadHint, { color: theme.colors.textMuted }]}>PNG or JPG, max 2MB</Text>
-                      </>
-                    )}
-                  </Pressable>
-                  {paymentValues.paypalQrUri ? (
-                    <SecondaryButton
-                      title="Remove QR code"
-                      onPress={handleRemovePaypalQr}
-                      disabled={uploadingPaypalQr}
-                      loading={false}
-                      backgroundColor={theme.colors.surface}
-                      borderColor={theme.colors.border}
-                      textColor={theme.colors.textPrimary}
-                    />
-                  ) : null}
-                </View>
+                    loading={false}
+                    backgroundColor={theme.colors.surface}
+                    borderColor={theme.colors.border}
+                    textColor={theme.colors.textPrimary}
+                  />
+                ) : null}
               </View>
+            </View>
 
               <PrimaryButton
                 title="Save payment links"
@@ -1252,9 +1434,83 @@ export default function SettingsScreen() {
           />
         </View>
       </ScrollView>
+
+      <Modal
+        visible={stagedModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={closeStagedModal}
+      >
+        <View style={styles.modalOverlay}>
+          <View
+            style={[styles.modalCard, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}
+          >
+            <View style={styles.modalHeader}>
+              <Text style={[styles.modalTitle, { color: theme.colors.textPrimary }]}>Staged items</Text>
+              <Pressable onPress={closeStagedModal} hitSlop={12}>
+                <Text style={{ color: theme.colors.primary, fontWeight: '600' }}>Close</Text>
+              </Pressable>
+            </View>
+            <Text style={[styles.modalSubtitle, { color: theme.colors.textSecondary }]}
+            >
+              {hasStagedItems
+                ? `You have ${stagedItemCount} staged item${stagedItemCount === 1 ? '' : 's'} ready to load.`
+                : 'No items are staged right now.'}
+            </Text>
+            {stagedInventoryLoading ? (
+              <View style={styles.modalEmpty}>
+                <ActivityIndicator color={theme.colors.primary} />
+              </View>
+            ) : hasStagedItems ? (
+              <ScrollView
+                style={styles.modalScroll}
+                contentContainerStyle={styles.modalList}
+                showsVerticalScrollIndicator={false}
+              >
+                {stagedSummary.map((entry) => (
+                  <View
+                    key={entry.eventId ?? 'no-event'}
+                    style={[styles.modalEventCard, { borderColor: theme.colors.border }]}
+                  >
+                    <Text style={[styles.modalEventTitle, { color: theme.colors.textPrimary }]}>
+                      {entry.eventName}
+                    </Text>
+                    <Text style={[styles.modalEventSubtitle, { color: theme.colors.textSecondary }]}
+                    >
+                      {entry.eventDates
+                        ? `${entry.eventDates} • ${entry.items.length} item${entry.items.length === 1 ? '' : 's'} staged`
+                        : `${entry.items.length} item${entry.items.length === 1 ? '' : 's'} staged`}
+                    </Text>
+                    {entry.items.map((item) => (
+                      <View key={item.id} style={styles.modalItemRow}>
+                        <Text style={[styles.modalItemName, { color: theme.colors.textPrimary }]}>{item.name}</Text>
+                        <Text style={[styles.modalItemMeta, { color: theme.colors.textSecondary }]}>Qty {item.quantity}</Text>
+                      </View>
+                    ))}
+                  </View>
+                ))}
+              </ScrollView>
+            ) : (
+              <View style={styles.modalEmpty}>
+                <Text style={[styles.modalEmptyText, { color: theme.colors.textSecondary }]}>Nothing staged yet.</Text>
+              </View>
+            )}
+
+            <View style={styles.modalFooter}>
+              <PrimaryButton
+                title="Done"
+                onPress={closeStagedModal}
+                backgroundColor={theme.colors.primary}
+                textColor={theme.colors.surface}
+              />
+            </View>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
+
 
 const styles = StyleSheet.create({
   safeArea: {
@@ -1277,12 +1533,21 @@ const styles = StyleSheet.create({
     fontSize: 15,
     lineHeight: 22,
   },
-  feedbackContainer: {
+  feedbackToast: {
+    position: 'absolute',
+    top: 16,
+    left: 20,
+    right: 20,
     borderWidth: 1,
     paddingVertical: 12,
     paddingHorizontal: 16,
     borderRadius: 12,
-    marginBottom: 8,
+    zIndex: 10,
+    elevation: 6,
+    shadowColor: '#000',
+    shadowOpacity: 0.12,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 4 },
   },
   feedbackText: {
     fontSize: 14,
@@ -1345,10 +1610,12 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   secondaryButton: {
-    flex: 1,
     borderWidth: 1,
     borderRadius: 12,
     paddingVertical: 12,
+    paddingHorizontal: 16,
+    minHeight: 48,
+    alignSelf: 'stretch',
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -1358,7 +1625,7 @@ const styles = StyleSheet.create({
   },
   inlineActions: {
     flexDirection: 'row',
-    gap: 12,
+    flexWrap: 'wrap',
     marginTop: 16,
   },
   chip: {
@@ -1370,6 +1637,90 @@ const styles = StyleSheet.create({
   chipText: {
     fontSize: 13,
     fontWeight: '600',
+  },
+  inlineActionButton: {
+    flex: 1,
+    marginRight: 12,
+    marginBottom: 12,
+    minWidth: '48%',
+  },
+  inlineActionButtonLast: {
+    marginRight: 0,
+  },
+  fullWidthButton: {
+    marginTop: 4,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.45)',
+    justifyContent: 'center',
+    padding: 24,
+  },
+  modalCard: {
+    borderWidth: 1,
+    borderRadius: 16,
+    padding: 20,
+    maxHeight: '80%',
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 8,
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+  },
+  modalSubtitle: {
+    fontSize: 13,
+    marginBottom: 12,
+  },
+  modalScroll: {
+    flexGrow: 0,
+  },
+  modalList: {
+    paddingBottom: 12,
+  },
+  modalEventCard: {
+    borderWidth: 1,
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 12,
+  },
+  modalEventTitle: {
+    fontSize: 15,
+    fontWeight: '600',
+  },
+  modalEventSubtitle: {
+    fontSize: 12,
+    marginTop: 4,
+  },
+  modalItemRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginTop: 8,
+  },
+  modalItemName: {
+    flex: 1,
+    fontSize: 14,
+    fontWeight: '500',
+    marginRight: 12,
+  },
+  modalItemMeta: {
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  modalEmpty: {
+    alignItems: 'center',
+    paddingVertical: 24,
+  },
+  modalEmptyText: {
+    fontSize: 14,
+  },
+  modalFooter: {
+    marginTop: 12,
   },
   notice: {
     borderWidth: 1,
@@ -1489,18 +1840,17 @@ const styles = StyleSheet.create({
     height: 180,
   },
   paypalActions: {
-    flexDirection: 'row',
-    gap: 12,
-    alignItems: 'center',
+    width: '100%',
   },
   paypalUploadButton: {
-    flex: 1,
+    width: '100%',
     borderWidth: 1,
     borderRadius: 12,
     paddingVertical: 14,
     paddingHorizontal: 16,
     justifyContent: 'center',
     alignItems: 'center',
+    marginBottom: 12,
   },
   paypalUploadText: {
     fontSize: 15,
@@ -1509,6 +1859,10 @@ const styles = StyleSheet.create({
   paypalUploadHint: {
     fontSize: 12,
     marginTop: 4,
+  },
+  paypalRemoveButton: {
+    alignSelf: 'stretch',
+    width: '100%',
   },
   loadingRow: {
     flexDirection: 'row',
