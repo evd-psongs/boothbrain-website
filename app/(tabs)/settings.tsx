@@ -30,6 +30,7 @@ import { useTheme } from '@/providers/ThemeProvider';
 import { formatCurrencyFromCents } from '@/utils/currency';
 import type { SubscriptionPlan } from '@/types/auth';
 import { enforceFreePlanLimits, FREE_PLAN_ITEM_LIMIT } from '@/lib/freePlanLimits';
+import { PAUSE_ALREADY_USED_MESSAGE } from '@/utils/pauseErrors';
 import * as ImagePicker from 'expo-image-picker';
 
 type FeedbackState = {
@@ -454,6 +455,7 @@ export default function SettingsScreen() {
   const subscription = user?.subscription ?? null;
   const currentPlanTier = subscription?.plan?.tier ?? 'free';
   const isSubscriptionPaused = Boolean(subscription?.pausedAt);
+  const pauseAllowanceUsed = Boolean(subscription?.pauseAllowanceUsed);
   const trialDaysRemaining = useMemo(() => calculateDaysRemaining(subscription?.trialEndsAt ?? null), [
     subscription?.trialEndsAt,
   ]);
@@ -485,6 +487,13 @@ export default function SettingsScreen() {
     return rows;
   }, [planName, priceDescription, subscription?.currentPeriodEnd, trialDaysRemaining]);
   const canManagePause = Boolean(subscription?.id && currentPlanTier !== 'free');
+  const pauseRestrictionMessage = useMemo(() => {
+    if (!pauseAllowanceUsed || isSubscriptionPaused) return null;
+    if (subscription?.currentPeriodEnd) {
+      return `You can pause again after ${new Date(subscription.currentPeriodEnd).toLocaleDateString()}.`;
+    }
+    return 'You can pause again after your next billing date.';
+  }, [pauseAllowanceUsed, isSubscriptionPaused, subscription?.currentPeriodEnd]);
   const availablePlans = useMemo(
     () => normalizedPlans.filter((plan) => plan.tier !== currentPlanTier),
     [normalizedPlans, currentPlanTier],
@@ -620,6 +629,10 @@ export default function SettingsScreen() {
   const applyPauseState = useCallback(
     async (mode: 'pause' | 'resume') => {
       if (!user?.id || !canManagePause) return;
+      if (mode === 'pause' && pauseAllowanceUsed && !isSubscriptionPaused) {
+        showFeedback({ type: 'error', message: PAUSE_ALREADY_USED_MESSAGE });
+        return;
+      }
       setManagingPause(true);
       try {
         if (mode === 'resume') {
@@ -650,7 +663,7 @@ export default function SettingsScreen() {
         setManagingPause(false);
       }
     },
-    [user?.id, canManagePause, refreshSession, showFeedback],
+    [user?.id, canManagePause, pauseAllowanceUsed, isSubscriptionPaused, refreshSession, showFeedback],
   );
 
   const handleManagePause = useCallback(() => {
@@ -658,6 +671,11 @@ export default function SettingsScreen() {
 
     if (isSubscriptionPaused) {
       void applyPauseState('resume');
+      return;
+    }
+
+    if (pauseAllowanceUsed) {
+      Alert.alert('Pause unavailable', PAUSE_ALREADY_USED_MESSAGE);
       return;
     }
 
@@ -675,7 +693,7 @@ export default function SettingsScreen() {
         },
       ],
     );
-  }, [user?.id, canManagePause, isSubscriptionPaused, applyPauseState]);
+  }, [user?.id, canManagePause, isSubscriptionPaused, pauseAllowanceUsed, applyPauseState]);
 
   const handleSaveProfile = useCallback(async () => {
     if (!user?.id) return;
@@ -1174,10 +1192,15 @@ export default function SettingsScreen() {
               <Text style={[styles.pauseBody, { color: theme.colors.textSecondary }]}>
                 Need a break between markets? Pause your Pro plan once per billing cycle and we will hold your data until you resume.
               </Text>
+              {pauseRestrictionMessage ? (
+                <Text style={[styles.pauseRestriction, { color: theme.colors.textSecondary }]}>
+                  {pauseRestrictionMessage}
+                </Text>
+              ) : null}
               <PrimaryButton
                 title={isSubscriptionPaused ? 'Resume subscription' : 'Pause subscription'}
                 onPress={handleManagePause}
-                disabled={managingPause}
+                disabled={managingPause || (!isSubscriptionPaused && pauseAllowanceUsed)}
                 loading={managingPause}
                 backgroundColor={isSubscriptionPaused ? theme.colors.success : theme.colors.warning}
                 textColor={isSubscriptionPaused ? theme.colors.surface : theme.colors.textPrimary}
@@ -1574,6 +1597,10 @@ const styles = StyleSheet.create({
   pauseBody: {
     fontSize: 13,
     lineHeight: 20,
+  },
+  pauseRestriction: {
+    fontSize: 12,
+    lineHeight: 18,
   },
   freeLimitNotice: {
     fontSize: 13,

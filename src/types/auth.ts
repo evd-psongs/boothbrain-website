@@ -32,6 +32,8 @@ export type Subscription = {
   canceledAt: string | null;
   trialEndsAt: string | null;
   pausedAt: string | null;
+  pauseUsedPeriodStart: string | null;
+  pauseAllowanceUsed: boolean;
 };
 
 export type AuthUser = {

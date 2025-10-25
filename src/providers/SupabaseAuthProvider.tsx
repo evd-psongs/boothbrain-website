@@ -20,6 +20,22 @@ type AuthContextValue = {
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 
+async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, timeoutMessage: string): Promise<T> {
+  let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
+  try {
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      timeoutHandle = setTimeout(() => {
+        reject(new Error(timeoutMessage));
+      }, timeoutMs);
+    });
+    return await Promise.race([promise, timeoutPromise]);
+  } finally {
+    if (timeoutHandle) {
+      clearTimeout(timeoutHandle);
+    }
+  }
+}
+
 async function fetchProfile(userId: string): Promise<Profile | null> {
   const { data, error } = await supabase
     .from('profiles')
@@ -56,6 +72,7 @@ async function fetchSubscription(userId: string): Promise<Subscription | null> {
     canceled_at,
     trial_ends_at,
     paused_at,
+    pause_used_period_start,
     plan_id,
     plans:plan_id (
       id,
@@ -86,16 +103,32 @@ async function fetchSubscription(userId: string): Promise<Subscription | null> {
 
   const raw = data as any;
   const planRow = Array.isArray(raw?.plans) ? raw.plans[0] : raw.plans;
+  const pauseUsedPeriodStart: string | null = raw.pause_used_period_start ?? null;
+  const currentPeriodStart: string | null = raw.current_period_start ?? null;
+  const parseTs = (value: string | null): number | null => {
+    if (!value) return null;
+    const parsed = Date.parse(value);
+    return Number.isNaN(parsed) ? null : parsed;
+    };
+  const pauseUsedStartMs = parseTs(pauseUsedPeriodStart);
+  const currentPeriodStartMs = parseTs(currentPeriodStart);
+
+  const pauseAllowanceUsed = Boolean(
+    pauseUsedStartMs
+    && (!currentPeriodStartMs || pauseUsedStartMs === currentPeriodStartMs),
+  );
 
   return {
     id: raw.id,
     userId,
     status: raw.status,
-    currentPeriodStart: raw.current_period_start,
+    currentPeriodStart,
     currentPeriodEnd: raw.current_period_end,
     canceledAt: raw.canceled_at,
     trialEndsAt: raw.trial_ends_at,
     pausedAt: raw.paused_at,
+    pauseUsedPeriodStart,
+    pauseAllowanceUsed,
     plan: planRow
       ? {
           id: planRow.id as string,
@@ -303,17 +336,42 @@ export function SupabaseAuthProvider({ children }: { children: React.ReactNode }
     setError(null);
     setLoading(true);
     try {
-      const { data, error: refreshError } = await supabase.auth.refreshSession();
-      if (refreshError) {
-        throw refreshError;
+      const {
+        data: getData,
+        error: getError,
+      } = await withTimeout(
+        supabase.auth.getSession(),
+        10000,
+        'Timed out while checking the current session.',
+      );
+      if (getError) {
+        throw getError;
       }
 
-      const refreshedSession = data.session ?? null;
-      setSession(refreshedSession);
+      let nextSession = getData.session ?? null;
 
-      if (refreshedSession?.user) {
-        const authUser = await buildAuthUser(refreshedSession.user);
+      if (!nextSession?.user) {
+        const {
+          data: refreshData,
+          error: refreshError,
+        } = await withTimeout(
+          supabase.auth.refreshSession(),
+          10000,
+          'Timed out while refreshing the session.',
+        );
+        if (refreshError) {
+          throw refreshError;
+        }
+        nextSession = refreshData.session ?? null;
+      }
+
+      setSession(nextSession);
+
+      if (nextSession?.user) {
+        const authUser = await buildAuthUser(nextSession.user);
         setUser(authUser);
+      } else {
+        setUser(null);
       }
     } catch (err: any) {
       const message = err?.message ?? 'Failed to refresh session';
