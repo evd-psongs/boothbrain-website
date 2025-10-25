@@ -38,7 +38,7 @@ const normalizeError = (error: any): string => {
 };
 
 export async function pauseSubscription(userId: string): Promise<void> {
-  const { error } = await supabase.functions.invoke('stripe-manage-pause', {
+  const result = await supabase.functions.invoke('stripe-manage-pause', {
     body: {
       action: 'pause',
       userId,
@@ -46,14 +46,23 @@ export async function pauseSubscription(userId: string): Promise<void> {
     },
   });
 
-  if (error) {
-    const friendly = mapPauseErrorMessage(normalizeError(error));
+  if (result.error) {
+    console.error('pauseSubscription raw error', result);
+    try {
+      const bodyText = await result.response?.text();
+      if (bodyText) {
+        console.error('pauseSubscription error body', bodyText);
+      }
+    } catch (parseError) {
+      console.warn('pauseSubscription failed to read error body', parseError);
+    }
+    const friendly = mapPauseErrorMessage(normalizeError(result.error));
     throw new Error(friendly);
   }
 }
 
 export async function resumeSubscription(userId: string): Promise<void> {
-  const { error } = await supabase.functions.invoke('stripe-manage-pause', {
+  const result = await supabase.functions.invoke('stripe-manage-pause', {
     body: {
       action: 'resume',
       userId,
@@ -61,8 +70,17 @@ export async function resumeSubscription(userId: string): Promise<void> {
     },
   });
 
-  if (error) {
-    const friendly = mapPauseErrorMessage(normalizeError(error));
+  if (result.error) {
+    console.error('resumeSubscription raw error', result);
+    try {
+      const bodyText = await result.response?.text();
+      if (bodyText) {
+        console.error('resumeSubscription error body', bodyText);
+      }
+    } catch (parseError) {
+      console.warn('resumeSubscription failed to read error body', parseError);
+    }
+    const friendly = mapPauseErrorMessage(normalizeError(result.error));
     throw new Error(friendly);
   }
 }

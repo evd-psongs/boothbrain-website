@@ -29,6 +29,7 @@ const restHeaders = {
 type SubscriptionRow = {
   id: string;
   stripe_subscription_id: string | null;
+  stripe_customer_id: string | null;
   status: string | null;
   paused_at: string | null;
   pause_used_period_start: string | null;
@@ -37,7 +38,7 @@ type SubscriptionRow = {
 async function fetchSubscription(userId: string): Promise<SubscriptionRow | null> {
   const url = new URL(`${supabaseUrl}/rest/v1/subscriptions`);
   url.searchParams.set('user_id', `eq.${userId}`);
-  url.searchParams.set('select', 'id,stripe_subscription_id,status,paused_at,pause_used_period_start');
+  url.searchParams.set('select', 'id,stripe_subscription_id,stripe_customer_id,status,paused_at,pause_used_period_start');
   url.searchParams.set('limit', '1');
 
   const response = await fetch(url, {
@@ -98,11 +99,44 @@ Deno.serve(async (req) => {
     }
 
     const subscription = await fetchSubscription(userId);
-    if (!subscription || !subscription.stripe_subscription_id) {
+    if (!subscription) {
       return json({ error: 'Stripe subscription not configured.' }, 400);
     }
 
-    const stripeSubscription = await stripeGet(`subscriptions/${subscription.stripe_subscription_id}`);
+    let stripeSubscriptionId = subscription.stripe_subscription_id;
+    let stripeSubscription: any;
+
+    if (stripeSubscriptionId) {
+      stripeSubscription = await stripeGet(`subscriptions/${stripeSubscriptionId}`);
+    } else if (subscription.stripe_customer_id) {
+      const list = await stripeGet('subscriptions', {
+        customer: subscription.stripe_customer_id,
+        status: 'all',
+        limit: 100,
+      });
+
+      const candidates: any[] = Array.isArray(list?.data) ? list.data : [];
+      const match =
+        candidates.find((item) => {
+          const metadata = item?.metadata ?? {};
+          return metadata.supabase_user_id === userId || metadata.user_id === userId;
+        }) ??
+        candidates.find((item) => ['active', 'trialing', 'past_due'].includes(item?.status ?? ''));
+
+      if (!match) {
+        return json({ error: 'Stripe subscription not configured.' }, 400);
+      }
+
+      stripeSubscriptionId = match.id as string;
+      subscription.stripe_subscription_id = stripeSubscriptionId;
+      stripeSubscription = match;
+    } else {
+      return json({ error: 'Stripe subscription not configured.' }, 400);
+    }
+
+    if (!stripeSubscriptionId || !stripeSubscription) {
+      return json({ error: 'Stripe subscription not configured.' }, 400);
+    }
     const currentPeriodStartIso = toIso(stripeSubscription.current_period_start);
 
     const parseIso = (value?: string | null) => (value ? Date.parse(value) : null);
@@ -119,22 +153,34 @@ Deno.serve(async (req) => {
         return json({ error: 'Pause allowance used for this billing period.' }, 400);
       }
 
-      await stripeRequest(`subscriptions/${subscription.stripe_subscription_id}`, {
-        'pause_collection[behavior]': 'keep_as_draft',
+      // Stripe only allows keep_as_draft for manual collection; auto-charge subscriptions must use mark_uncollectible.
+      const pauseBehavior = stripeSubscription.collection_method === 'send_invoice'
+        ? 'keep_as_draft'
+        : 'mark_uncollectible';
+
+      console.log('stripe-manage-pause pause request', {
+        stripeSubscriptionId: subscription.stripe_subscription_id,
+        collectionMethod: stripeSubscription.collection_method,
+        pauseBehavior,
+      });
+
+      await stripeRequest(`subscriptions/${stripeSubscriptionId}`, {
+        'pause_collection[behavior]': pauseBehavior,
       });
     } else {
       if (!stripeSubscription.pause_collection) {
         return json({ error: 'Subscription is not paused.' }, 400);
       }
 
-      await stripeRequest(`subscriptions/${subscription.stripe_subscription_id}`, {
+      await stripeRequest(`subscriptions/${stripeSubscriptionId}`, {
         'pause_collection': '',
       });
     }
 
-    const updatedSubscription = await stripeGet(`subscriptions/${subscription.stripe_subscription_id}`);
+    const updatedSubscription = await stripeGet(`subscriptions/${stripeSubscriptionId}`);
 
     const updatePayload: Record<string, unknown> = {
+      stripe_subscription_id: updatedSubscription.id,
       status: updatedSubscription.status,
       current_period_start: toIso(updatedSubscription.current_period_start),
       current_period_end: toIso(updatedSubscription.current_period_end),
@@ -157,6 +203,8 @@ Deno.serve(async (req) => {
     return json({ status: updatedSubscription.status });
   } catch (error) {
     console.error('stripe-manage-pause error', error);
-    return json({ error: (error as Error).message ?? 'Failed to update subscription pause state.' }, 500);
+    const status = (error as { status?: number })?.status ?? 500;
+    const message = (error as Error)?.message ?? 'Failed to update subscription pause state.';
+    return json({ error: message }, status);
   }
 });

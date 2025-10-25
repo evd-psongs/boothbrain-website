@@ -33,7 +33,9 @@ export async function stripeRequest(
   const body = await response.json();
   if (!response.ok) {
     const message = body?.error?.message ?? JSON.stringify(body);
-    throw new Error(message);
+    const error: Error & { status?: number } = new Error(message);
+    error.status = response.status;
+    throw error;
   }
   return body;
 }
@@ -55,7 +57,9 @@ export async function stripeGet(path: string, params?: Record<string, string | n
   const body = await response.json();
   if (!response.ok) {
     const message = body?.error?.message ?? JSON.stringify(body);
-    throw new Error(message);
+    const error: Error & { status?: number } = new Error(message);
+    error.status = response.status;
+    throw error;
   }
   return body;
 }
@@ -97,4 +101,3 @@ export async function verifyStripeSignature(payload: string, header: string, sec
 export async function createStripeCustomer(params: Record<string, string | number | boolean | null | undefined>) {
   return stripeRequest('customers', params);
 }
-
