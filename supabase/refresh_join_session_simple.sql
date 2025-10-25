@@ -1,5 +1,4 @@
--- Fix join_session_simple ambiguity
-
+-- Recreate join_session_simple with the session_code argument used by the client
 drop function if exists public.join_session_simple(text);
 
 create function public.join_session_simple(session_code text)
@@ -86,3 +85,6 @@ end;
 $$;
 
 grant execute on function public.join_session_simple(text) to authenticated;
+
+-- Force PostgREST to reload the updated function signature
+select pg_notify('pgrst', 'reload schema');
