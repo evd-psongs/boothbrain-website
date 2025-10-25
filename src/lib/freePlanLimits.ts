@@ -30,14 +30,14 @@ const getRecencyScore = (row: InventoryRow): number => {
   return Math.max(...parsed);
 };
 
-const sortByRecencyDesc = (rows: InventoryRow[]): InventoryRow[] =>
+const sortByRecencyAsc = (rows: InventoryRow[]): InventoryRow[] =>
   [...rows].sort((a, b) => {
     const aScore = getRecencyScore(a);
     const bScore = getRecencyScore(b);
     if (aScore === bScore) {
       return (a.created_at ?? '').localeCompare(b.created_at ?? '') || a.id.localeCompare(b.id);
     }
-    return bScore - aScore;
+    return aScore - bScore;
   });
 
 export async function enforceFreePlanLimits(userId: string): Promise<EnforcementResult> {
@@ -52,7 +52,7 @@ export async function enforceFreePlanLimits(userId: string): Promise<Enforcement
     throw new Error(inventoryError.message ?? 'Failed to load inventory for pause downgrade.');
   }
 
-  const inventoryRows = sortByRecencyDesc((inventoryData ?? []) as InventoryRow[]);
+  const inventoryRows = sortByRecencyAsc((inventoryData ?? []) as InventoryRow[]);
   const inventoryToKeep = inventoryRows.slice(0, limit);
   const inventoryToRemove = inventoryRows.slice(limit);
 
@@ -81,7 +81,7 @@ export async function enforceFreePlanLimits(userId: string): Promise<Enforcement
     throw new Error(stagedError.message ?? 'Failed to load staged inventory for pause downgrade.');
   }
 
-  const stagedRows = sortByRecencyDesc((stagedData ?? []) as InventoryRow[]);
+  const stagedRows = sortByRecencyAsc((stagedData ?? []) as InventoryRow[]);
   const stagedToKeep = stagedRows.slice(0, remainingSlots);
   const stagedToRemove = stagedRows.slice(remainingSlots);
 
