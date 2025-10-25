@@ -264,6 +264,13 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
         } catch {
           // ignore
         }
+        if (currentSession.isHost) {
+          try {
+            await supabase.from('sessions').delete().eq('code', currentSession.code);
+          } catch {
+            // ignore
+          }
+        }
       }
       setCurrentSession(null);
       await persistSession(null);
