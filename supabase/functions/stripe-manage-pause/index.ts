@@ -116,6 +116,8 @@ Deno.serve(async (req) => {
       });
 
       const candidates: any[] = Array.isArray(list?.data) ? list.data : [];
+      candidates.sort((a, b) => (b?.created ?? 0) - (a?.created ?? 0));
+
       const match =
         candidates.find((item) => {
           const metadata = item?.metadata ?? {};
@@ -136,6 +138,39 @@ Deno.serve(async (req) => {
 
     if (!stripeSubscriptionId || !stripeSubscription) {
       return json({ error: 'Stripe subscription not configured.' }, 400);
+    }
+
+    const stripeCustomerId = typeof stripeSubscription.customer === 'string'
+      ? stripeSubscription.customer
+      : stripeSubscription.customer?.id ?? null;
+
+    if (userId && stripeSubscriptionId) {
+      const metadata = stripeSubscription.metadata ?? {};
+      const needsUserId = metadata.supabase_user_id !== userId && metadata.user_id !== userId;
+      const needsSubscriptionId = subscription.id
+        && metadata.subscription_id !== subscription.id
+        && metadata.supabase_subscription_id !== subscription.id;
+
+      if (needsUserId || needsSubscriptionId) {
+        const metadataPayload: Record<string, string> = {};
+        if (needsUserId) {
+          metadataPayload['metadata[supabase_user_id]'] = userId;
+          metadataPayload['metadata[user_id]'] = userId;
+        }
+        if (needsSubscriptionId) {
+          metadataPayload['metadata[subscription_id]'] = subscription.id;
+          metadataPayload['metadata[supabase_subscription_id]'] = subscription.id;
+        }
+
+        try {
+          await stripeRequest(`subscriptions/${stripeSubscriptionId}`, metadataPayload);
+        } catch (metadataError) {
+          console.warn('stripe-manage-pause metadata sync failed', metadataError, {
+            stripeSubscriptionId,
+            userId,
+          });
+        }
+      }
     }
     const currentPeriodStartIso = toIso(stripeSubscription.current_period_start);
 
@@ -181,6 +216,9 @@ Deno.serve(async (req) => {
 
     const updatePayload: Record<string, unknown> = {
       stripe_subscription_id: updatedSubscription.id,
+      stripe_customer_id: stripeCustomerId ?? (typeof updatedSubscription.customer === 'string'
+        ? updatedSubscription.customer
+        : updatedSubscription.customer?.id ?? null),
       status: updatedSubscription.status,
       current_period_start: toIso(updatedSubscription.current_period_start),
       current_period_end: toIso(updatedSubscription.current_period_end),

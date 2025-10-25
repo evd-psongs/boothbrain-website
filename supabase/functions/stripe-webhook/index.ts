@@ -1,7 +1,7 @@
 import { serve } from 'https://deno.land/std@0.224.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.45.4?target=deno';
 
-import { stripeGet, verifyStripeSignature } from '../_shared/stripe.ts';
+import { stripeGet, stripeRequest, verifyStripeSignature } from '../_shared/stripe.ts';
 
 const webhookSecret = Deno.env.get('STRIPE_WEBHOOK_SECRET');
 const supabaseUrl = Deno.env.get('SUPABASE_URL');
@@ -62,8 +62,10 @@ async function upsertSubscription(stripeSubscription: any) {
   if (!targetSubscriptionId && userId) {
     const { data, error } = await supabaseAdmin
       .from('subscriptions')
-      .select('id,pause_used_period_start')
+      .select('id,pause_used_period_start,created_at,stripe_subscription_id')
       .eq('user_id', userId)
+      .order('created_at', { ascending: false })
+      .limit(1)
       .maybeSingle();
     if (error) throw error;
     if (data) {
@@ -100,6 +102,36 @@ async function upsertSubscription(stripeSubscription: any) {
       userId,
     });
     return;
+  }
+
+  if (userId && stripeSubscriptionId) {
+    const metadata = stripeSubscription.metadata ?? {};
+    const needsUserId = metadata.supabase_user_id !== userId && metadata.user_id !== userId;
+    const needsSubscriptionId = targetSubscriptionId
+      && metadata.subscription_id !== targetSubscriptionId
+      && metadata.supabase_subscription_id !== targetSubscriptionId;
+
+    if (needsUserId || needsSubscriptionId) {
+      const metadataPayload: Record<string, string> = {};
+      if (needsUserId) {
+        metadataPayload['metadata[supabase_user_id]'] = userId;
+        metadataPayload['metadata[user_id]'] = userId;
+      }
+      if (needsSubscriptionId) {
+        metadataPayload['metadata[subscription_id]'] = targetSubscriptionId;
+        metadataPayload['metadata[supabase_subscription_id]'] = targetSubscriptionId;
+      }
+
+      try {
+        await stripeRequest(`subscriptions/${stripeSubscriptionId}`, metadataPayload);
+      } catch (metadataError) {
+        console.warn('webhook: failed to sync subscription metadata', metadataError, {
+          stripeSubscriptionId,
+          userId,
+          subscriptionId: targetSubscriptionId,
+        });
+      }
+    }
   }
 
   if (existingPauseUsedPeriodStart === undefined) {

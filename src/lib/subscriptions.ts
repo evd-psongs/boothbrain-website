@@ -47,16 +47,34 @@ export async function pauseSubscription(userId: string): Promise<void> {
   });
 
   if (result.error) {
-    console.error('pauseSubscription raw error', result);
-    try {
-      const bodyText = await result.response?.text();
-      if (bodyText) {
-        console.error('pauseSubscription error body', bodyText);
-      }
-    } catch (parseError) {
-      console.warn('pauseSubscription failed to read error body', parseError);
+    if (__DEV__) {
+      console.error('pauseSubscription raw error', result);
     }
-    const friendly = mapPauseErrorMessage(normalizeError(result.error));
+
+    let responseBody: string | null = null;
+    if (result.response) {
+      try {
+        responseBody = await result.response.text();
+        if (__DEV__ && responseBody) {
+          console.error('pauseSubscription error body', responseBody);
+        }
+      } catch (parseError) {
+        if (__DEV__) {
+          console.warn('pauseSubscription failed to read error body', parseError);
+        }
+      }
+    }
+
+    let sourceForNormalization: unknown = result.error;
+    if (responseBody) {
+      try {
+        sourceForNormalization = JSON.parse(responseBody);
+      } catch {
+        sourceForNormalization = responseBody;
+      }
+    }
+
+    const friendly = mapPauseErrorMessage(normalizeError(sourceForNormalization ?? result.error));
     throw new Error(friendly);
   }
 }
@@ -71,16 +89,34 @@ export async function resumeSubscription(userId: string): Promise<void> {
   });
 
   if (result.error) {
-    console.error('resumeSubscription raw error', result);
-    try {
-      const bodyText = await result.response?.text();
-      if (bodyText) {
-        console.error('resumeSubscription error body', bodyText);
-      }
-    } catch (parseError) {
-      console.warn('resumeSubscription failed to read error body', parseError);
+    if (__DEV__) {
+      console.error('resumeSubscription raw error', result);
     }
-    const friendly = mapPauseErrorMessage(normalizeError(result.error));
+
+    let responseBody: string | null = null;
+    if (result.response) {
+      try {
+        responseBody = await result.response.text();
+        if (__DEV__ && responseBody) {
+          console.error('resumeSubscription error body', responseBody);
+        }
+      } catch (parseError) {
+        if (__DEV__) {
+          console.warn('resumeSubscription failed to read error body', parseError);
+        }
+      }
+    }
+
+    let sourceForNormalization: unknown = result.error;
+    if (responseBody) {
+      try {
+        sourceForNormalization = JSON.parse(responseBody);
+      } catch {
+        sourceForNormalization = responseBody;
+      }
+    }
+
+    const friendly = mapPauseErrorMessage(normalizeError(sourceForNormalization ?? result.error));
     throw new Error(friendly);
   }
 }

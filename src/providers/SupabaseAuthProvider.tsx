@@ -3,6 +3,7 @@ import { Session, User } from '@supabase/supabase-js';
 
 import { supabase } from '@/lib/supabase';
 import type { AuthUser, Profile, SignInData, SignUpData, Subscription } from '@/types/auth';
+import { isPauseAllowanceUsed } from '@/utils/subscriptionPause';
 
 type AuthContextValue = {
   user: AuthUser | null;
@@ -105,18 +106,8 @@ async function fetchSubscription(userId: string): Promise<Subscription | null> {
   const planRow = Array.isArray(raw?.plans) ? raw.plans[0] : raw.plans;
   const pauseUsedPeriodStart: string | null = raw.pause_used_period_start ?? null;
   const currentPeriodStart: string | null = raw.current_period_start ?? null;
-  const parseTs = (value: string | null): number | null => {
-    if (!value) return null;
-    const parsed = Date.parse(value);
-    return Number.isNaN(parsed) ? null : parsed;
-    };
-  const pauseUsedStartMs = parseTs(pauseUsedPeriodStart);
-  const currentPeriodStartMs = parseTs(currentPeriodStart);
 
-  const pauseAllowanceUsed = Boolean(
-    pauseUsedStartMs
-    && (!currentPeriodStartMs || pauseUsedStartMs === currentPeriodStartMs),
-  );
+  const pauseAllowanceUsed = isPauseAllowanceUsed(currentPeriodStart, pauseUsedPeriodStart);
 
   return {
     id: raw.id,
