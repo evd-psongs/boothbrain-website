@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
@@ -22,10 +22,13 @@ export default function VerifyEmailScreen() {
   const { session, loading, error, clearError } = useSupabaseAuth();
   const params = useLocalSearchParams<{ email?: string }>();
 
-  const [code, setCode] = useState('');
+  const CODE_LENGTH = 6;
+  const [digits, setDigits] = useState<string[]>(Array.from({ length: CODE_LENGTH }, () => ''));
   const [submitting, setSubmitting] = useState(false);
   const [localError, setLocalError] = useState<string | null>(null);
   const [infoMessage, setInfoMessage] = useState<string | null>(null);
+  const [focusedIndex, setFocusedIndex] = useState<number | null>(null);
+  const inputsRef = useRef<Array<TextInput | null>>([]);
 
   const targetEmail = useMemo(() => {
     if (typeof params.email === 'string' && params.email.trim().length) {
@@ -33,6 +36,8 @@ export default function VerifyEmailScreen() {
     }
     return session?.user?.email ?? '';
   }, [params.email, session?.user?.email]);
+
+  const code = useMemo(() => digits.join(''), [digits]);
 
   useEffect(() => {
     if (!loading && session?.user?.email_confirmed_at) {
@@ -47,8 +52,8 @@ export default function VerifyEmailScreen() {
     }
 
     const trimmedCode = code.trim();
-    if (!trimmedCode) {
-      setLocalError('Enter the 6-digit code from your email.');
+    if (!trimmedCode || trimmedCode.length !== CODE_LENGTH) {
+      setLocalError(`Enter the ${CODE_LENGTH}-digit code from your email.`);
       return;
     }
 
@@ -77,6 +82,105 @@ export default function VerifyEmailScreen() {
       setSubmitting(false);
     }
   };
+
+  const handleDigitChange = (index: number, value: string) => {
+    const sanitized = value.replace(/\D/g, '');
+
+    if (sanitized.length > 1) {
+      const clipped = sanitized.slice(0, CODE_LENGTH);
+      const nextDigits = Array.from({ length: CODE_LENGTH }, () => '');
+      clipped.split('').forEach((char, idx) => {
+        nextDigits[idx] = char;
+      });
+      setDigits(nextDigits);
+      if (clipped.length >= CODE_LENGTH) {
+        inputsRef.current[CODE_LENGTH - 1]?.blur();
+      } else {
+        inputsRef.current[clipped.length]?.focus();
+      }
+      return;
+    }
+
+    setDigits((prev) => {
+      const next = [...prev];
+      next[index] = sanitized;
+      return next;
+    });
+
+    if (sanitized.length === 0) {
+      return;
+    }
+
+    if (index < CODE_LENGTH - 1) {
+      inputsRef.current[index + 1]?.focus();
+    } else {
+      inputsRef.current[index]?.blur();
+    }
+  };
+
+  const handleDigitKeyPress = (index: number, key: string) => {
+    if (key !== 'Backspace') return;
+
+    if (digits[index]) {
+      setDigits((prev) => {
+        const next = [...prev];
+        next[index] = '';
+        return next;
+      });
+      return;
+    }
+
+    for (let i = index - 1; i >= 0; i -= 1) {
+      if (digits[i]) {
+        setDigits((prev) => {
+          const next = [...prev];
+          next[i] = '';
+          return next;
+        });
+        inputsRef.current[i]?.focus();
+        return;
+      }
+      if (i === index - 1) {
+        inputsRef.current[i]?.focus();
+        return;
+      }
+    }
+  };
+
+  const renderCodeInputs = () =>
+    digits.map((digit, idx) => (
+      <TextInput
+        key={`code-${idx}`}
+        ref={(ref) => {
+          inputsRef.current[idx] = ref;
+        }}
+        value={digit}
+        onChangeText={(text) => handleDigitChange(idx, text)}
+        onFocus={() => setFocusedIndex(idx)}
+        onBlur={() => setFocusedIndex((current) => (current === idx ? null : current))}
+        onKeyPress={({ nativeEvent }) => handleDigitKeyPress(idx, nativeEvent.key)}
+        keyboardType="number-pad"
+        inputMode="numeric"
+        returnKeyType={idx === CODE_LENGTH - 1 ? 'done' : 'next'}
+        maxLength={1}
+        style={[
+          styles.codeInput,
+          {
+            borderColor: focusedIndex === idx ? theme.colors.primary : theme.colors.border,
+            color: theme.colors.textPrimary,
+            backgroundColor: theme.colors.surfaceMuted,
+          },
+        ]}
+        textAlign="center"
+        autoFocus={idx === 0}
+        importantForAutofill="yes"
+        textContentType="oneTimeCode"
+        autoComplete="one-time-code"
+        editable={!submitting}
+        accessibilityLabel={`Verification code digit ${idx + 1}`}
+        accessible
+      />
+    ));
 
   const handleResend = async () => {
     if (!targetEmail) {
@@ -128,23 +232,7 @@ export default function VerifyEmailScreen() {
 
           <View style={styles.formGroup}>
             <Text style={[styles.label, { color: theme.colors.textSecondary }]}>Verification code</Text>
-            <TextInput
-              value={code}
-              onChangeText={setCode}
-              keyboardType="number-pad"
-              placeholder="123456"
-              placeholderTextColor={theme.colors.textMuted}
-              maxLength={6}
-              style={[
-                styles.input,
-                {
-                  borderColor: theme.colors.border,
-                  color: theme.colors.textPrimary,
-                  backgroundColor: theme.colors.surfaceMuted,
-                },
-              ]}
-              editable={!submitting}
-            />
+            <View style={styles.codeRow}>{renderCodeInputs()}</View>
           </View>
 
           {displayError ? (
@@ -224,14 +312,19 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '500',
   },
-  input: {
+  codeRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: 8,
+    alignSelf: 'center',
+  },
+  codeInput: {
     borderWidth: 1,
-    borderRadius: 14,
-    paddingVertical: 14,
-    paddingHorizontal: 16,
-    fontSize: 18,
-    textAlign: 'center',
-    letterSpacing: 4,
+    borderRadius: 12,
+    width: 44,
+    height: 56,
+    fontSize: 20,
+    fontWeight: '600',
   },
   alert: {
     borderRadius: 12,

@@ -124,6 +124,7 @@ function calculateDaysRemaining(targetDateIso: string | null): number | null {
 }
 
 const SESSION_CODE_GROUP_SIZE = 4;
+const MIN_SESSION_PASSPHRASE_LENGTH = 8;
 
 function stripJoinCodeFormatting(value: string): string {
   return value.replace(/[^A-Za-z0-9]/g, '').toUpperCase();
@@ -656,11 +657,19 @@ export default function SettingsScreen() {
 
   const handleCreateSession = useCallback(async () => {
     if (!user?.id) return;
+    const trimmedPassphrase = sessionPassphrase.trim();
+    if (trimmedPassphrase.length > 0 && trimmedPassphrase.length < MIN_SESSION_PASSPHRASE_LENGTH) {
+      showFeedback({
+        type: 'error',
+        message: `Passphrases must be at least ${MIN_SESSION_PASSPHRASE_LENGTH} characters.`,
+      });
+      return;
+    }
     setCreatingSession(true);
     clearError();
     try {
       const session = await createSession({
-        passphrase: sessionPassphrase,
+        passphrase: trimmedPassphrase,
         approvalRequired: true,
       });
       setShowJoinForm(false);
@@ -687,10 +696,18 @@ export default function SettingsScreen() {
       });
       return;
     }
+    const trimmedPassphrase = joinPassphrase.trim();
+    if (trimmedPassphrase.length > 0 && trimmedPassphrase.length < MIN_SESSION_PASSPHRASE_LENGTH) {
+      showFeedback({
+        type: 'error',
+        message: `Passphrases must be at least ${MIN_SESSION_PASSPHRASE_LENGTH} characters.`,
+      });
+      return;
+    }
     setJoiningSession(true);
     clearError();
     try {
-      const result = await joinSession(normalized, { passphrase: joinPassphrase });
+      const result = await joinSession(normalized, { passphrase: trimmedPassphrase });
       if (result.status === 'approved' && result.session) {
         setJoinCode('');
         setJoinPassphrase('');
@@ -1316,7 +1333,7 @@ export default function SettingsScreen() {
               />
 
               <Text style={[styles.sessionSubHint, { color: theme.colors.textSecondary }]}>
-                Hosts must approve join requests. Adding a passphrase adds extra protection.
+                Hosts must approve join requests. Passphrases need at least {MIN_SESSION_PASSPHRASE_LENGTH} characters.
               </Text>
 
               <PrimaryButton
