@@ -403,15 +403,22 @@ export default function HomeScreen() {
 
     try {
       if (editingEventId) {
-        await updateEventRecord(ownerUserId, editingEventId, {
+        const updated = await updateEventRecord(ownerUserId, editingEventId, {
           name: trimmedName,
           startDateISO: startISO,
           endDateISO: endISO,
           location: trimmedLocation ? trimmedLocation : null,
           notes: trimmedNotes ? trimmedNotes : null,
         });
+        if (updated) {
+          setEvents((current) =>
+            [...current.map((event) => (event.id === updated.id ? updated : event))].sort(
+              (a, b) => new Date(a.startDateISO).getTime() - new Date(b.startDateISO).getTime(),
+            ),
+          );
+        }
       } else {
-        await createEvent(ownerUserId, {
+        const created = await createEvent(ownerUserId, {
           name: trimmedName,
           startDateISO: startISO,
           endDateISO: endISO,
@@ -422,6 +429,11 @@ export default function HomeScreen() {
             id: `${item.id}-${Date.now()}-${index}`,
           })),
         });
+        setEvents((current) =>
+          [...current, created].sort(
+            (a, b) => new Date(a.startDateISO).getTime() - new Date(b.startDateISO).getTime(),
+          ),
+        );
       }
       handleCloseEventModal();
     } catch (error) {
@@ -440,6 +452,7 @@ export default function HomeScreen() {
     futureEventLimit,
     handleCloseEventModal,
     ownerUserId,
+    setEvents,
   ]);
 
   const handleRemoveEvent = useCallback(
