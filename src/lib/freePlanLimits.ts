@@ -35,8 +35,7 @@ const sortByRecencyDesc = (rows: InventoryRow[]): InventoryRow[] =>
     const aScore = getRecencyScore(a);
     const bScore = getRecencyScore(b);
     if (aScore === bScore) {
-      // Stable tiebreaker to make deletions deterministic.
-      return (b.created_at ?? '').localeCompare(a.created_at ?? '') || b.id.localeCompare(a.id);
+      return (a.created_at ?? '').localeCompare(b.created_at ?? '') || a.id.localeCompare(b.id);
     }
     return bScore - aScore;
   });
