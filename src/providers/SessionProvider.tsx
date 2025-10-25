@@ -18,6 +18,7 @@ const normalizePlanTier = (value: string | null | undefined): SubscriptionPlanTi
 
 export type ActiveSession = {
   code: string;
+  sessionId: string | null;
   hostUserId: string;
   eventId: string;
   hostDeviceId: string;
@@ -104,6 +105,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
 
         setCurrentSession({
           code: parsed.code ?? '',
+          sessionId: parsed.sessionId ?? null,
           eventId: parsed.eventId ?? '',
           hostUserId: parsed.hostUserId ?? (user?.id ?? ''),
           hostDeviceId: parsed.hostDeviceId ?? '',
@@ -153,26 +155,33 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
 
       const eventId = `event_${code}_${Date.now()}`;
 
-      const { error: insertError } = await supabase.from('sessions').insert({
-        code,
-        event_id: eventId,
-        host_user_id: user.id,
-        host_device_id: hostDeviceId,
-      });
+      const { data: inserted, error: insertError } = await supabase
+        .from('sessions')
+        .insert({
+          code,
+          event_id: eventId,
+          host_user_id: user.id,
+          host_device_id: hostDeviceId,
+        })
+        .select('id, event_id, host_device_id, created_at')
+        .single();
 
       if (insertError) {
         throw insertError;
       }
+
+      const sessionRow = inserted ?? null;
 
       const hostPlanTier = normalizePlanTier(user.subscription?.plan?.tier);
       const hostPlanPaused = Boolean(user.subscription?.pausedAt);
 
       const session: ActiveSession = {
         code,
-        eventId,
+        sessionId: sessionRow?.id ?? null,
+        eventId: sessionRow?.event_id ?? eventId,
         hostUserId: user.id,
-        hostDeviceId,
-        createdAt: new Date().toISOString(),
+        hostDeviceId: sessionRow?.host_device_id ?? hostDeviceId,
+        createdAt: sessionRow?.created_at ?? new Date().toISOString(),
         isHost: true,
         hostPlanTier,
         hostPlanPaused,
@@ -220,6 +229,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
 
         const session: ActiveSession = {
           code: row.code,
+          sessionId: row.session_id ?? null,
           eventId: row.event_id,
           hostUserId: row.host_user_id,
           hostDeviceId: row.host_device_id,
@@ -282,6 +292,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
 
       const session: ActiveSession = {
         code: row.code,
+        sessionId: row.session_id ?? null,
         eventId: row.event_id,
         hostUserId: row.host_user_id,
         hostDeviceId: row.host_device_id,

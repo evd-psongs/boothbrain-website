@@ -4,6 +4,7 @@ drop function if exists public.join_session_simple(text);
 create function public.join_session_simple(session_code text)
 returns table (
   code text,
+  session_id uuid,
   event_id text,
   host_user_id uuid,
   host_device_id text,
@@ -75,6 +76,7 @@ begin
   return query
   select
     session_row.code,
+    session_row.id,
     session_row.event_id,
     session_row.host_user_id,
     session_row.host_device_id,

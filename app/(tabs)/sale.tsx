@@ -505,6 +505,7 @@ export default function SaleScreen() {
           await createOrder({
             userId: ownerUserId,
             sessionId: currentSession?.eventId ?? null,
+            sessionUuid: currentSession?.sessionId ?? null,
             paymentMethod: PAYMENT_METHOD_MAP[paymentMethod],
             totalCents: grandTotalCents,
             taxCents,
@@ -545,6 +546,7 @@ export default function SaleScreen() {
     [
       cartLines,
       currentSession?.eventId,
+      currentSession?.sessionId,
       deviceId,
       paymentSettings.cashAppTag,
       paymentSettings.paypalQrUri,

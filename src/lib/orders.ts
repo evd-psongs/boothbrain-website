@@ -10,6 +10,7 @@ import {
 type OrderRow = {
   id: string;
   owner_user_id: string | null;
+  session_id: string | null;
   status: string | null;
   payment_method: string | null;
   total_cents: number | null;
@@ -94,6 +95,7 @@ type CreateOrderItemInput = {
 type CreateOrderInput = {
   userId: string;
   sessionId?: string | null;
+  sessionUuid?: string | null;
   paymentMethod: PaymentMethod;
   totalCents: number;
   taxCents?: number;
@@ -111,7 +113,7 @@ export async function fetchOrders({ userId, sessionId = null }: FetchOrdersInput
   let query = supabase
     .from('orders')
     .select(
-      'id, owner_user_id, status, payment_method, total_cents, tax_cents, tax_rate_bps, event_id, buyer_name, buyer_contact, description, deposit_taken, device_id, created_at, updated_at',
+      'id, owner_user_id, session_id, status, payment_method, total_cents, tax_cents, tax_rate_bps, event_id, buyer_name, buyer_contact, description, deposit_taken, device_id, created_at, updated_at',
     )
     .eq('owner_user_id', userId);
 
@@ -132,7 +134,7 @@ export async function fetchOrderSummaries({ userId, sessionId = null }: FetchOrd
   let query = supabase
     .from('orders')
     .select(
-      `id, owner_user_id, status, payment_method, total_cents, tax_cents, tax_rate_bps, event_id, buyer_name, buyer_contact, description, deposit_taken, device_id, created_at, updated_at,
+      `id, owner_user_id, session_id, status, payment_method, total_cents, tax_cents, tax_rate_bps, event_id, buyer_name, buyer_contact, description, deposit_taken, device_id, created_at, updated_at,
       order_items(order_id, item_id, quantity, price_cents, items(name, sku))`,
     )
     .eq('owner_user_id', userId);
@@ -227,6 +229,7 @@ const adjustInventoryForOrder = async ({
 export async function createOrder({
   userId,
   sessionId = null,
+  sessionUuid = null,
   paymentMethod,
   totalCents,
   taxCents = 0,
@@ -251,7 +254,7 @@ export async function createOrder({
     .from('orders')
     .insert({
       owner_user_id: userId,
-      session_id: sessionId,
+      session_id: sessionUuid,
       event_id: sessionId,
       payment_method: paymentMethod,
       total_cents: totalCents,
@@ -266,7 +269,7 @@ export async function createOrder({
       created_by: userId,
     })
     .select(
-      'id, owner_user_id, status, payment_method, total_cents, tax_cents, tax_rate_bps, event_id, buyer_name, buyer_contact, description, deposit_taken, device_id, created_at, updated_at',
+      'id, owner_user_id, session_id, status, payment_method, total_cents, tax_cents, tax_rate_bps, event_id, buyer_name, buyer_contact, description, deposit_taken, device_id, created_at, updated_at',
     )
     .single();
 
