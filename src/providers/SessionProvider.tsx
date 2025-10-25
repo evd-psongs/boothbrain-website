@@ -26,14 +26,31 @@ export type ActiveSession = {
   isHost: boolean;
   hostPlanTier: SubscriptionPlanTier;
   hostPlanPaused: boolean;
+  requiresPassphrase: boolean;
+  approvalRequired: boolean;
+};
+
+type CreateSessionOptions = {
+  passphrase?: string;
+  approvalRequired?: boolean;
+};
+
+type JoinSessionOptions = {
+  passphrase?: string;
+};
+
+export type JoinSessionResult = {
+  status: 'approved' | 'pending';
+  session: ActiveSession | null;
+  message?: string;
 };
 
 type SessionContextValue = {
   currentSession: ActiveSession | null;
   loading: boolean;
   error: string | null;
-  createSession: () => Promise<ActiveSession>;
-  joinSession: (code: string) => Promise<ActiveSession>;
+  createSession: (options?: CreateSessionOptions) => Promise<ActiveSession>;
+  joinSession: (code: string, options?: JoinSessionOptions) => Promise<JoinSessionResult>;
   endSession: () => Promise<void>;
   refreshSession: () => Promise<void>;
   clearError: () => void;
@@ -44,14 +61,7 @@ type SessionContextValue = {
 
 const SessionContext = createContext<SessionContextValue | undefined>(undefined);
 
-const generateSessionCode = () => {
-  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-  let code = '';
-  for (let i = 0; i < 6; i += 1) {
-    code += chars[Math.floor(Math.random() * chars.length)];
-  }
-  return code;
-};
+export const SESSION_CODE_LENGTH = 12;
 
 const getDeviceId = async () => {
   try {
@@ -113,6 +123,8 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
           isHost: Boolean(parsed.isHost),
           hostPlanTier,
           hostPlanPaused,
+          requiresPassphrase: Boolean(parsed.requiresPassphrase),
+          approvalRequired: parsed.approvalRequired ?? true,
         });
       } catch (err: any) {
         console.error('Failed to restore session', err);
@@ -134,7 +146,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
-  const createSession = useCallback(async (): Promise<ActiveSession> => {
+  const createSession = useCallback(async (options?: CreateSessionOptions): Promise<ActiveSession> => {
     if (!user) {
       throw new Error('You must be signed in to start a session.');
     }
@@ -143,48 +155,40 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
 
     try {
       const hostDeviceId = await getDeviceId();
-      let code = generateSessionCode();
-      let attempts = 0;
+      const trimmedPassphrase = options?.passphrase?.trim() ?? '';
+      const approvalRequired = options?.approvalRequired ?? true;
 
-      while (attempts < 5) {
-        const { data: existing } = await supabase.from('sessions').select('code').eq('code', code).maybeSingle();
-        if (!existing) break;
-        code = generateSessionCode();
-        attempts += 1;
+      const { data, error: rpcError } = await supabase.rpc('create_session_secure', {
+        host_device_identifier: hostDeviceId,
+        passphrase: trimmedPassphrase.length ? trimmedPassphrase : null,
+        require_host_approval: approvalRequired,
+      });
+
+      if (rpcError) {
+        throw rpcError;
       }
 
-      const eventId = `event_${code}_${Date.now()}`;
+      const sessionRow = (Array.isArray(data) ? data[0] : data) ?? null;
 
-      const { data: inserted, error: insertError } = await supabase
-        .from('sessions')
-        .insert({
-          code,
-          event_id: eventId,
-          host_user_id: user.id,
-          host_device_id: hostDeviceId,
-        })
-        .select('id, event_id, host_device_id, created_at')
-        .single();
-
-      if (insertError) {
-        throw insertError;
+      if (!sessionRow) {
+        throw new Error('Failed to create session.');
       }
-
-      const sessionRow = inserted ?? null;
 
       const hostPlanTier = normalizePlanTier(user.subscription?.plan?.tier);
       const hostPlanPaused = Boolean(user.subscription?.pausedAt);
 
       const session: ActiveSession = {
-        code,
-        sessionId: sessionRow?.id ?? null,
-        eventId: sessionRow?.event_id ?? eventId,
-        hostUserId: user.id,
-        hostDeviceId: sessionRow?.host_device_id ?? hostDeviceId,
-        createdAt: sessionRow?.created_at ?? new Date().toISOString(),
+        code: sessionRow.code,
+        sessionId: sessionRow.id ?? null,
+        eventId: sessionRow.event_id,
+        hostUserId: sessionRow.host_user_id ?? user.id,
+        hostDeviceId: sessionRow.host_device_id ?? hostDeviceId,
+        createdAt: sessionRow.created_at ?? new Date().toISOString(),
         isHost: true,
         hostPlanTier,
         hostPlanPaused,
+        requiresPassphrase: Boolean(sessionRow.requires_passphrase),
+        approvalRequired: Boolean(sessionRow.approval_required ?? true),
       };
 
       setCurrentSession(session);
@@ -201,7 +205,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
   }, [user, persistSession]);
 
   const joinSession = useCallback(
-    async (code: string): Promise<ActiveSession> => {
+    async (code: string, options?: JoinSessionOptions): Promise<JoinSessionResult> => {
       if (!user) {
         throw new Error('You must be signed in to join a session.');
       }
@@ -214,11 +218,17 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
           throw new Error('Enter a session code to join.');
         }
 
+        const deviceId = await getDeviceId();
+        const trimmedPassphrase = options?.passphrase?.trim() ?? '';
+
         const { data, error: fetchError } = await supabase.rpc('join_session_simple', {
           session_code: normalizedCode,
+          client_device_id: deviceId,
+          host_passphrase: trimmedPassphrase.length ? trimmedPassphrase : null,
         });
 
         if (fetchError) {
+          setError(fetchError.message ?? 'Failed to join session');
           throw fetchError;
         }
 
@@ -226,6 +236,8 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
         if (!row) {
           throw new Error('Session not found. Check the code and try again.');
         }
+
+        const joinStatus = (row.join_status ?? 'pending') as 'approved' | 'pending';
 
         const session: ActiveSession = {
           code: row.code,
@@ -237,16 +249,25 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
           isHost: row.host_user_id === user.id,
           hostPlanTier: normalizePlanTier(row.host_plan_tier),
           hostPlanPaused: Boolean(row.host_plan_paused),
+          requiresPassphrase: Boolean(row.requires_passphrase),
+          approvalRequired: Boolean(row.approval_required ?? true),
         };
 
-        setCurrentSession(session);
-        await persistSession(session);
+        if (joinStatus === 'approved') {
+          setCurrentSession(session);
+          await persistSession(session);
+          return { status: 'approved', session };
+        }
 
-        return session;
+        return {
+          status: 'pending',
+          session: null,
+          message: 'Join request sent to the host. You will appear once approved.',
+        };
       } catch (err: any) {
         const message = err?.message ?? 'Failed to join session';
         setError(message);
-        throw new Error(message);
+        throw err;
       } finally {
         setLoading(false);
       }
@@ -282,8 +303,10 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
   const refreshSession = useCallback(async () => {
     if (!currentSession) return;
     try {
+      const deviceId = await getDeviceId();
       const { data, error: fetchError } = await supabase.rpc('join_session_simple', {
         session_code: currentSession.code,
+        client_device_id: deviceId,
       });
 
       if (fetchError) {
@@ -307,7 +330,14 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
         isHost: user?.id === row.host_user_id,
         hostPlanTier: normalizePlanTier(row.host_plan_tier),
         hostPlanPaused: Boolean(row.host_plan_paused),
+        requiresPassphrase: Boolean(row.requires_passphrase),
+        approvalRequired: Boolean(row.approval_required ?? true),
       };
+
+      if (row.join_status && row.join_status !== 'approved') {
+        await endSession();
+        return;
+      }
 
       setCurrentSession(session);
       await persistSession(session);
