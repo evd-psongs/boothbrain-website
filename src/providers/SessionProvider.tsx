@@ -137,6 +137,13 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
         throw insertError;
       }
 
+      const { data: insertedRow, error: verifyError } = await supabase
+        .from('sessions')
+        .select('code, host_user_id, event_id, created_at')
+        .eq('code', code)
+        .maybeSingle();
+      console.log('[SessionDebug] verify insert', { insertedRow, verifyError });
+
       const session: ActiveSession = {
         code,
         eventId,
@@ -173,18 +180,24 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
           throw new Error('Enter a session code to join.');
         }
 
+        console.log('[JoinDebug] attempt', { normalizedCode });
+
         const { data, error: fetchError } = await supabase.rpc('join_session_simple', {
           session_code: normalizedCode,
         });
 
         if (fetchError) {
+          console.warn('[JoinDebug] rpc error', fetchError);
           throw fetchError;
         }
 
         const row = Array.isArray(data) ? data[0] : null;
         if (!row) {
+          console.warn('[JoinDebug] rpc returned empty result');
           throw new Error('Session not found. Check the code and try again.');
         }
+
+        console.log('[JoinDebug] joined session', row);
 
         const session: ActiveSession = {
           code: row.code,
@@ -200,6 +213,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
 
         return session;
       } catch (err: any) {
+        console.warn('[JoinDebug] join failed', err);
         const message = err?.message ?? 'Failed to join session';
         setError(message);
         throw new Error(message);
@@ -229,15 +243,19 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
       });
 
       if (fetchError) {
+        console.warn('[JoinDebug] refresh error', fetchError);
         await endSession();
         return;
       }
 
       const row = Array.isArray(data) ? data[0] : null;
       if (!row) {
+        console.warn('[JoinDebug] refresh returned empty result');
         await endSession();
         return;
       }
+
+      console.log('[JoinDebug] refresh session', row);
 
       const session: ActiveSession = {
         code: row.code,
