@@ -98,10 +98,11 @@ export default function SaleScreen() {
   const { theme } = useTheme();
   const router = useRouter();
   const { user } = useSupabaseAuth();
-  const { currentSession } = useSession();
+  const { currentSession, sharedOwnerId } = useSession();
 
   const userId = user?.id ?? null;
-  const { items, loading, error, refresh } = useInventory(userId);
+  const ownerUserId = sharedOwnerId ?? userId;
+  const { items, loading, error, refresh } = useInventory(ownerUserId);
 
   const [searchQuery, setSearchQuery] = useState('');
   const [feedback, setFeedback] = useState<FeedbackState>(null);
@@ -421,8 +422,8 @@ export default function SaleScreen() {
         setFeedback({ type: 'info', message: 'Add items to the cart before checking out.' });
         return;
       }
-      if (!userId) {
-        setFeedback({ type: 'error', message: 'Sign in to record a sale.' });
+      if (!userId || !ownerUserId) {
+        setFeedback({ type: 'error', message: 'Session owner not available yet.' });
         return;
       }
       if (isProcessingCheckout) return;
@@ -502,7 +503,7 @@ export default function SaleScreen() {
 
         try {
           await createOrder({
-            userId,
+            userId: ownerUserId,
             sessionId: currentSession?.eventId ?? null,
             paymentMethod: PAYMENT_METHOD_MAP[paymentMethod],
             totalCents: grandTotalCents,
@@ -560,6 +561,7 @@ export default function SaleScreen() {
       taxCents,
       refresh,
       userId,
+      ownerUserId,
       isProcessingCheckout,
     ],
   );

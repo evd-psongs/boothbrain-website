@@ -40,7 +40,7 @@ const mapRow = (row: EventStagedInventoryRow): EventStagedInventoryItem => ({
   updatedAt: row.updated_at,
 });
 
-export function useEventStagedInventory(userId: string | null | undefined) {
+export function useEventStagedInventory(ownerId: string | null | undefined) {
   const [items, setItems] = useState<EventStagedInventoryItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -48,7 +48,7 @@ export function useEventStagedInventory(userId: string | null | undefined) {
 
   const fetchItems = useCallback(
     async (signal?: AbortSignal) => {
-      if (!userId) {
+      if (!ownerId) {
         setItems([]);
         setLoading(false);
         setError(null);
@@ -63,7 +63,7 @@ export function useEventStagedInventory(userId: string | null | undefined) {
         .select(
           'id, owner_user_id, event_id, name, sku, price_cents, quantity, low_stock_threshold, image_paths, expected_release_at, status, notes, converted_item_id, created_at, updated_at',
         )
-        .eq('owner_user_id', userId)
+        .eq('owner_user_id', ownerId)
         .order('created_at', { ascending: true });
 
       const { data, error: queryError } = await query;
@@ -80,7 +80,7 @@ export function useEventStagedInventory(userId: string | null | undefined) {
       setItems(rows.map(mapRow));
       setLoading(false);
     },
-    [userId],
+    [ownerId],
   );
 
   useEffect(() => {
@@ -90,7 +90,7 @@ export function useEventStagedInventory(userId: string | null | undefined) {
   }, [fetchItems]);
 
   useEffect(() => {
-    if (!userId) {
+    if (!ownerId) {
       if (channelRef.current) {
         supabase.removeChannel(channelRef.current);
         channelRef.current = null;
@@ -99,14 +99,14 @@ export function useEventStagedInventory(userId: string | null | undefined) {
     }
 
     const channel = supabase
-      .channel(`event_staged_inventory:${userId}`)
+      .channel(`event_staged_inventory:${ownerId}`)
       .on(
         'postgres_changes',
         {
           event: '*',
           schema: 'public',
           table: 'event_staged_inventory',
-          filter: `owner_user_id=eq.${userId}`,
+          filter: `owner_user_id=eq.${ownerId}`,
         },
         (payload: RealtimePostgresChangesPayload<EventStagedInventoryRow>) => {
           setItems((current) => {
@@ -135,7 +135,7 @@ export function useEventStagedInventory(userId: string | null | undefined) {
         channelRef.current = null;
       }
     };
-  }, [userId]);
+  }, [ownerId]);
 
   const itemsByEvent = useMemo(() => {
     return items.reduce<Record<string, EventStagedInventoryItem[]>>((acc, item) => {

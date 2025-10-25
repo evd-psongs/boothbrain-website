@@ -4,9 +4,17 @@ import * as Device from 'expo-device';
 
 import { supabase } from '@/lib/supabase';
 import { useSupabaseAuth } from '@/providers/SupabaseAuthProvider';
+import type { SubscriptionPlanTier } from '@/types/auth';
 
 const SESSION_STORAGE_KEY = 'boothbrain_current_session';
 const DEVICE_ID_STORAGE_KEY = 'boothbrain_device_id';
+
+const normalizePlanTier = (value: string | null | undefined): SubscriptionPlanTier => {
+  if (value === 'pro' || value === 'enterprise' || value === 'free') {
+    return value;
+  }
+  return 'free';
+};
 
 export type ActiveSession = {
   code: string;
@@ -15,6 +23,8 @@ export type ActiveSession = {
   hostDeviceId: string;
   createdAt: string;
   isHost: boolean;
+  hostPlanTier: SubscriptionPlanTier;
+  hostPlanPaused: boolean;
 };
 
 type SessionContextValue = {
@@ -26,6 +36,9 @@ type SessionContextValue = {
   endSession: () => Promise<void>;
   refreshSession: () => Promise<void>;
   clearError: () => void;
+  sharedOwnerId: string | null;
+  sharedPlanTier: SubscriptionPlanTier;
+  sharedPlanPaused: boolean;
 };
 
 const SessionContext = createContext<SessionContextValue | undefined>(undefined);
@@ -73,10 +86,9 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
           setCurrentSession(null);
           return;
         }
-        const parsed: ActiveSession = JSON.parse(raw);
+        const parsed = JSON.parse(raw) as Partial<ActiveSession>;
 
-        // Expire sessions older than 72 hours to avoid stale codes.
-        const createdAt = new Date(parsed.createdAt);
+        const createdAt = new Date(parsed.createdAt ?? 0);
         const hoursElapsed = (Date.now() - createdAt.getTime()) / (1000 * 60 * 60);
         if (hoursElapsed > 72) {
           await AsyncStorage.removeItem(SESSION_STORAGE_KEY);
@@ -84,7 +96,22 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
           return;
         }
 
-        setCurrentSession(parsed);
+        const hostPlanTier = normalizePlanTier(
+          parsed.hostPlanTier ?? user?.subscription?.plan?.tier ?? 'free',
+        );
+        const hostPlanPaused =
+          parsed.hostPlanPaused ?? Boolean(user?.subscription?.pausedAt ?? false);
+
+        setCurrentSession({
+          code: parsed.code ?? '',
+          eventId: parsed.eventId ?? '',
+          hostUserId: parsed.hostUserId ?? (user?.id ?? ''),
+          hostDeviceId: parsed.hostDeviceId ?? '',
+          createdAt: parsed.createdAt ?? new Date().toISOString(),
+          isHost: Boolean(parsed.isHost),
+          hostPlanTier,
+          hostPlanPaused,
+        });
       } catch (err: any) {
         console.error('Failed to restore session', err);
         setError('Failed to restore session');
@@ -137,12 +164,8 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
         throw insertError;
       }
 
-      const { data: insertedRow, error: verifyError } = await supabase
-        .from('sessions')
-        .select('code, host_user_id, event_id, created_at')
-        .eq('code', code)
-        .maybeSingle();
-      console.log('[SessionDebug] verify insert', { insertedRow, verifyError });
+      const hostPlanTier = normalizePlanTier(user.subscription?.plan?.tier);
+      const hostPlanPaused = Boolean(user.subscription?.pausedAt);
 
       const session: ActiveSession = {
         code,
@@ -151,6 +174,8 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
         hostDeviceId,
         createdAt: new Date().toISOString(),
         isHost: true,
+        hostPlanTier,
+        hostPlanPaused,
       };
 
       setCurrentSession(session);
@@ -180,24 +205,18 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
           throw new Error('Enter a session code to join.');
         }
 
-        console.log('[JoinDebug] attempt', { normalizedCode });
-
         const { data, error: fetchError } = await supabase.rpc('join_session_simple', {
           session_code: normalizedCode,
         });
 
         if (fetchError) {
-          console.warn('[JoinDebug] rpc error', fetchError);
           throw fetchError;
         }
 
         const row = Array.isArray(data) ? data[0] : null;
         if (!row) {
-          console.warn('[JoinDebug] rpc returned empty result');
           throw new Error('Session not found. Check the code and try again.');
         }
-
-        console.log('[JoinDebug] joined session', row);
 
         const session: ActiveSession = {
           code: row.code,
@@ -206,6 +225,8 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
           hostDeviceId: row.host_device_id,
           createdAt: row.created_at,
           isHost: row.host_user_id === user.id,
+          hostPlanTier: normalizePlanTier(row.host_plan_tier),
+          hostPlanPaused: Boolean(row.host_plan_paused),
         };
 
         setCurrentSession(session);
@@ -213,7 +234,6 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
 
         return session;
       } catch (err: any) {
-        console.warn('[JoinDebug] join failed', err);
         const message = err?.message ?? 'Failed to join session';
         setError(message);
         throw new Error(message);
@@ -228,12 +248,19 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
     setError(null);
     setLoading(true);
     try {
+      if (currentSession) {
+        try {
+          await supabase.rpc('leave_session', { session_code: currentSession.code });
+        } catch {
+          // ignore
+        }
+      }
       setCurrentSession(null);
       await persistSession(null);
     } finally {
       setLoading(false);
     }
-  }, [persistSession]);
+  }, [persistSession, currentSession]);
 
   const refreshSession = useCallback(async () => {
     if (!currentSession) return;
@@ -243,19 +270,15 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
       });
 
       if (fetchError) {
-        console.warn('[JoinDebug] refresh error', fetchError);
         await endSession();
         return;
       }
 
       const row = Array.isArray(data) ? data[0] : null;
       if (!row) {
-        console.warn('[JoinDebug] refresh returned empty result');
         await endSession();
         return;
       }
-
-      console.log('[JoinDebug] refresh session', row);
 
       const session: ActiveSession = {
         code: row.code,
@@ -264,6 +287,8 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
         hostDeviceId: row.host_device_id,
         createdAt: row.created_at,
         isHost: user?.id === row.host_user_id,
+        hostPlanTier: normalizePlanTier(row.host_plan_tier),
+        hostPlanPaused: Boolean(row.host_plan_paused),
       };
 
       setCurrentSession(session);
@@ -278,6 +303,12 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
     setError(null);
   }, []);
 
+  const sharedOwnerId = currentSession ? currentSession.hostUserId : user?.id ?? null;
+  const sharedPlanTier: SubscriptionPlanTier = currentSession
+    ? currentSession.hostPlanTier
+    : normalizePlanTier(user?.subscription?.plan?.tier);
+  const sharedPlanPaused = currentSession ? currentSession.hostPlanPaused : Boolean(user?.subscription?.pausedAt);
+
   const value = useMemo<SessionContextValue>(
     () => ({
       currentSession,
@@ -288,8 +319,23 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
       endSession,
       refreshSession,
       clearError,
+      sharedOwnerId,
+      sharedPlanTier,
+      sharedPlanPaused,
     }),
-    [currentSession, loading, error, createSession, joinSession, endSession, refreshSession, clearError],
+    [
+      currentSession,
+      loading,
+      error,
+      createSession,
+      joinSession,
+      endSession,
+      refreshSession,
+      clearError,
+      sharedOwnerId,
+      sharedPlanTier,
+      sharedPlanPaused,
+    ],
   );
 
   return <SessionContext.Provider value={value}>{children}</SessionContext.Provider>;

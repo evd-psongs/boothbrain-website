@@ -19,6 +19,7 @@ import * as ImagePicker from 'expo-image-picker';
 
 import { useTheme } from '@/providers/ThemeProvider';
 import { useSupabaseAuth } from '@/providers/SupabaseAuthProvider';
+import { useSession } from '@/providers/SessionProvider';
 import { useInventory } from '@/hooks/useInventory';
 import { useEventStagedInventory } from '@/hooks/useEventStagedInventory';
 import { createInventoryItem, deleteInventoryItem, getInventoryItem, updateInventoryItem } from '@/lib/inventory';
@@ -67,6 +68,7 @@ export default function ItemFormScreen() {
   const router = useRouter();
   const { theme } = useTheme();
   const { user } = useSupabaseAuth();
+  const { currentSession, sharedOwnerId, sharedPlanTier, sharedPlanPaused } = useSession();
   const { itemId, mode: modeParam, eventId: eventIdParam, stagedId } = useLocalSearchParams<{
     itemId?: string;
     mode?: string;
@@ -74,6 +76,7 @@ export default function ItemFormScreen() {
     stagedId?: string;
   }>();
   const userId = user?.id ?? null;
+  const ownerUserId = sharedOwnerId ?? userId;
 
   const formMode: FormMode =
     modeParam === 'stage' || modeParam === 'convert' ? (modeParam as FormMode) : 'inventory';
@@ -90,17 +93,22 @@ export default function ItemFormScreen() {
     isInventoryMode && typeof itemId === 'string' && itemId.length > 0;
   const editingStagedItem = !isInventoryMode && Boolean(stagingTargetId);
 
-  const { items } = useInventory(userId);
-  const { stagedItems } = useEventStagedInventory(userId);
+  const { items } = useInventory(ownerUserId);
+  const { stagedItems } = useEventStagedInventory(ownerUserId);
 
-  const planTier = user?.subscription?.plan?.tier ?? 'free';
-  const planPaused = Boolean(user?.subscription?.pausedAt);
+  const planTier = sharedPlanTier;
+  const planPaused = sharedPlanPaused;
   const planItemLimit = useMemo(() => {
     if (planPaused) return FREE_PLAN_ITEM_LIMIT;
     if (planTier === 'free') return FREE_PLAN_ITEM_LIMIT;
-    const fromPlan = user?.subscription?.plan?.maxInventoryItems;
-    return typeof fromPlan === 'number' && fromPlan > 0 ? fromPlan : null;
-  }, [planPaused, planTier, user?.subscription?.plan?.maxInventoryItems]);
+    if (!currentSession || currentSession.isHost) {
+      const fromPlan = user?.subscription?.plan?.maxInventoryItems;
+      if (typeof fromPlan === 'number' && fromPlan > 0) {
+        return fromPlan;
+      }
+    }
+    return null;
+  }, [planPaused, planTier, currentSession?.isHost, user?.subscription?.plan?.maxInventoryItems]);
 
   const [form, setForm] = useState<FormState>(defaultState);
   const [feedback, setFeedback] = useState<FeedbackState>(null);
@@ -131,7 +139,7 @@ export default function ItemFormScreen() {
     let isActive = true;
 
     const loadData = async () => {
-      if (!userId) {
+      if (!ownerUserId) {
         if (isActive) {
           setForm(defaultState);
           setImages([]);
@@ -157,7 +165,7 @@ export default function ItemFormScreen() {
 
       try {
         if (editingInventoryItem && itemId) {
-          const item = await getInventoryItem({ userId, itemId });
+          const item = await getInventoryItem({ userId: ownerUserId, itemId });
           if (item && isActive) {
             setForm({
               name: item.name,
@@ -177,7 +185,7 @@ export default function ItemFormScreen() {
           }
         } else if ((editingStagedItem || isConvertMode) && stagingTargetId) {
           const staged = await getEventStagedInventoryItem({
-            userId,
+            userId: ownerUserId,
             stagedId: stagingTargetId,
           });
           if (staged && isActive) {
@@ -221,7 +229,7 @@ export default function ItemFormScreen() {
     return () => {
       isActive = false;
     };
-  }, [editingInventoryItem, editingStagedItem, isConvertMode, itemId, stagingTargetId, userId]);
+  }, [editingInventoryItem, editingStagedItem, isConvertMode, itemId, stagingTargetId, ownerUserId]);
 
   const enforcePlanLimit = isInventoryMode || isConvertMode || isStagingMode;
   const stagedItemCount = useMemo(
@@ -278,8 +286,8 @@ export default function ItemFormScreen() {
   }, []);
 
   const handleAddImage = useCallback(async () => {
-    if (!userId) {
-      setFeedback({ type: 'error', message: 'Sign in to add photos.' });
+    if (!userId || !ownerUserId) {
+      setFeedback({ type: 'error', message: 'Session owner not available yet.' });
       return;
     }
 
@@ -319,7 +327,7 @@ export default function ItemFormScreen() {
     } finally {
       setImagePickerBusy(false);
     }
-  }, [userId, images.length]);
+  }, [userId, ownerUserId, images.length]);
 
   const handleRemoveImage = useCallback((image: ItemImageState) => {
     if (image.uploading) return;
@@ -331,8 +339,8 @@ export default function ItemFormScreen() {
   }, []);
 
   const handleSave = useCallback(async () => {
-    if (!userId) {
-      setFeedback({ type: 'error', message: 'Sign in to manage your inventory.' });
+    if (!userId || !ownerUserId) {
+      setFeedback({ type: 'error', message: 'Session owner not available yet.' });
       return;
     }
 
@@ -397,7 +405,7 @@ export default function ItemFormScreen() {
 
       for (const image of pendingUploads) {
         try {
-          const { path, publicUrl } = await uploadItemImage({ userId, uri: image.uri });
+          const { path, publicUrl } = await uploadItemImage({ userId: ownerUserId, uri: image.uri });
           uploadedDuringSave.push(path);
           uploadResults.push({ id: image.id, path, publicUrl });
           setImages((prev) =>
@@ -436,14 +444,14 @@ export default function ItemFormScreen() {
       if (isInventoryMode) {
         if (editingInventoryItem && itemId) {
           await updateInventoryItem({
-            userId,
+            userId: ownerUserId,
             itemId,
             input: { ...sharedDetails, sessionId: null },
           });
           setFeedback({ type: 'success', message: 'Item updated.' });
         } else {
           await createInventoryItem({
-            userId,
+            userId: ownerUserId,
             input: { ...sharedDetails, sessionId: null },
           });
           setFeedback({ type: 'success', message: 'Item created.' });
@@ -455,14 +463,14 @@ export default function ItemFormScreen() {
         }
         if (editingStagedItem && stagingTargetId) {
           await updateEventStagedInventoryItem({
-            userId,
+            userId: ownerUserId,
             stagedId: stagingTargetId,
             input: { ...sharedDetails },
           });
           setFeedback({ type: 'success', message: 'Pre-staged item updated.' });
         } else {
           const created = await createEventStagedInventoryItem({
-            userId,
+            userId: ownerUserId,
             eventId: effectiveEventId,
             input: { ...sharedDetails },
           });
@@ -476,18 +484,18 @@ export default function ItemFormScreen() {
         }
 
         await updateEventStagedInventoryItem({
-          userId,
+          userId: ownerUserId,
           stagedId: stagingTargetId,
           input: { ...sharedDetails },
         });
 
         const createdItem = await createInventoryItem({
-          userId,
+          userId: ownerUserId,
           input: { ...sharedDetails, sessionId: effectiveEventId },
         });
 
         await updateEventStagedInventoryStatus({
-          userId,
+          userId: ownerUserId,
           stagedId: stagingTargetId,
           status: 'converted',
           convertedItemId: createdItem.id,
@@ -526,6 +534,7 @@ export default function ItemFormScreen() {
     }
   }, [
     userId,
+    ownerUserId,
     form,
     activeStageEventId,
     stageEventId,
@@ -546,7 +555,7 @@ export default function ItemFormScreen() {
   ]);
 
   const handleDelete = useCallback(() => {
-    if (!userId) return;
+    if (!userId || !ownerUserId) return;
 
     if (isInventoryMode) {
       if (!editingInventoryItem || !itemId) return;
@@ -559,7 +568,7 @@ export default function ItemFormScreen() {
           onPress: async () => {
             try {
               setDeleting(true);
-              await deleteInventoryItem({ userId, itemId });
+              await deleteInventoryItem({ userId: ownerUserId, itemId });
               const removalTargets = Array.from(
                 new Set([
                   ...images.map((img) => img.path).filter(Boolean) as string[],
@@ -591,7 +600,7 @@ export default function ItemFormScreen() {
           onPress: async () => {
             try {
               setDeleting(true);
-              await deleteEventStagedInventoryItem({ userId, stagedId: stagingTargetId });
+              await deleteEventStagedInventoryItem({ userId: ownerUserId, stagedId: stagingTargetId });
               const removalTargets = Array.from(
                 new Set([
                   ...images.map((img) => img.path).filter(Boolean) as string[],
@@ -615,6 +624,7 @@ export default function ItemFormScreen() {
     }
   }, [
     userId,
+    ownerUserId,
     isInventoryMode,
     editingInventoryItem,
     itemId,

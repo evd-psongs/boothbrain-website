@@ -18,15 +18,13 @@ import { useTheme } from '@/providers/ThemeProvider';
 import { useSupabaseAuth } from '@/providers/SupabaseAuthProvider';
 import { useSession } from '@/providers/SessionProvider';
 import { useOrderReports } from '@/hooks/useOrderReports';
-import {
-  useUpcomingEvents,
-  type EventChecklistItem,
-  type UpcomingEvent,
-} from '@/hooks/useUpcomingEvents';
+import { useEvents } from '@/hooks/useEvents';
+import type { EventChecklistItem, EventRecord } from '@/types/events';
 import { useInventory } from '@/hooks/useInventory';
 import { useEventStagedInventory } from '@/hooks/useEventStagedInventory';
 import { deleteEventStagedInventoryItem, loadStagedInventoryItems } from '@/lib/eventStagedInventory';
 import { removeItemImage } from '@/lib/itemImages';
+import { createEvent, updateEventRecord, deleteEventRecord } from '@/lib/events';
 import { StagedInventoryModal } from '@/components/StagedInventoryModal';
 import type { EventStagedInventoryItem } from '@/types/inventory';
 import { formatCurrencyFromCents } from '@/utils/currency';
@@ -61,31 +59,30 @@ export default function HomeScreen() {
   const { theme } = useTheme();
   const router = useRouter();
   const { user } = useSupabaseAuth();
-  const { currentSession } = useSession();
-  const planTier = user?.subscription?.plan?.tier ?? 'free';
-  const planPaused = Boolean(user?.subscription?.pausedAt);
+  const { currentSession, sharedOwnerId, sharedPlanTier, sharedPlanPaused } = useSession();
+  const planTier = sharedPlanTier;
+  const planPaused = sharedPlanPaused;
 
   const userId = user?.id ?? null;
+  const ownerUserId = sharedOwnerId ?? userId;
 
   const { orders, loading: loadingOrders, refresh: refreshOrders } = useOrderReports(
-    userId,
+    ownerUserId,
     currentSession?.eventId ?? null,
   );
-  const { items, loading: loadingInventory, refresh: refreshInventory } = useInventory(userId);
+  const { items, loading: loadingInventory, refresh: refreshInventory } = useInventory(ownerUserId);
   const {
     events,
     loading: loadingEvents,
-    addEvent,
-    updateEvent,
-    removeEvent,
     refresh: refreshEvents,
-  } = useUpcomingEvents(userId);
+    setEvents,
+  } = useEvents(ownerUserId);
   const {
     stagedByEvent,
     loading: loadingStaged,
     refresh: refreshStaged,
     error: stagedError,
-  } = useEventStagedInventory(userId);
+  } = useEventStagedInventory(ownerUserId);
   const futureEventLimit = useMemo(() => {
     if (planPaused) return FREE_PLAN_EVENT_LIMIT;
     if (planTier === 'free') return FREE_PLAN_EVENT_LIMIT;
@@ -105,29 +102,29 @@ export default function HomeScreen() {
 
   const handleAddStagedInventory = useCallback(
     (eventId: string) => {
-      if (!userId) {
+      if (!userId || !ownerUserId) {
         Alert.alert('Sign in required', 'Sign in to stage inventory for an event.');
         return;
       }
       router.push({ pathname: '/item-form', params: { mode: 'stage', eventId } });
     },
-    [router, userId],
+    [router, userId, ownerUserId],
   );
 
   const handleEditStagedInventory = useCallback(
     (eventId: string, stagedId: string) => {
-      if (!userId) {
+      if (!userId || !ownerUserId) {
         Alert.alert('Sign in required', 'Sign in to update staged inventory.');
         return;
       }
       router.push({ pathname: '/item-form', params: { mode: 'stage', eventId, stagedId } });
     },
-    [router, userId],
+    [router, userId, ownerUserId],
   );
 
   const handleRemoveStagedInventory = useCallback(
     (staged: EventStagedInventoryItem) => {
-      if (!userId) {
+      if (!userId || !ownerUserId) {
         Alert.alert('Sign in required', 'Sign in to update staged inventory.');
         return;
       }
@@ -139,7 +136,7 @@ export default function HomeScreen() {
           style: 'destructive',
           onPress: async () => {
             try {
-              await deleteEventStagedInventoryItem({ userId, stagedId: staged.id });
+              await deleteEventStagedInventoryItem({ userId: ownerUserId, stagedId: staged.id });
               if (staged.imagePaths.length) {
                 await Promise.allSettled(staged.imagePaths.map((path) => removeItemImage(path)));
               }
@@ -151,7 +148,7 @@ export default function HomeScreen() {
         },
       ]);
     },
-    [userId],
+    [userId, ownerUserId],
   );
 
   const [eventModalVisible, setEventModalVisible] = useState(false);
@@ -186,7 +183,7 @@ export default function HomeScreen() {
     return 'post';
   }, [events]);
 
-  const getEventPhase = useCallback((event: UpcomingEvent): 'prep' | 'live' | 'post' => {
+  const getEventPhase = useCallback((event: EventRecord): 'prep' | 'live' | 'post' => {
     const now = Date.now();
     const start = new Date(event.startDateISO).getTime();
     const end = new Date(event.endDateISO).getTime();
@@ -269,7 +266,7 @@ export default function HomeScreen() {
     resetEventForm();
   }, [resetEventForm]);
 
-  const handleEditEvent = useCallback((event: UpcomingEvent) => {
+  const handleEditEvent = useCallback((event: EventRecord) => {
     setEditingEventId(event.id);
     setEventName(event.name ?? '');
     const parsedStart = (() => {
@@ -321,6 +318,11 @@ export default function HomeScreen() {
       Alert.alert('Add task', 'Enter a task name.');
       return;
     }
+    if (!ownerUserId) {
+      Alert.alert('Event tasks', 'Session owner not available yet.');
+      return;
+    }
+
     const title = taskTitle.trim();
     const newItem: EventChecklistItem = {
       id: `task-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
@@ -328,14 +330,29 @@ export default function HomeScreen() {
       done: false,
       phase: taskPhase,
     };
-    void updateEvent(taskModalEventId, (event) => ({
-      ...event,
-      checklist: [...(event.checklist ?? []), newItem],
-    }));
+
+    const target = events.find((event) => event.id === taskModalEventId);
+    if (!target) {
+      setTaskModalVisible(false);
+      setTaskModalEventId(null);
+      setTaskTitle('');
+      return;
+    }
+
+    const nextChecklist = [...(target.checklist ?? []), newItem];
+    setEvents((prev) =>
+      prev.map((event) => (event.id === target.id ? { ...event, checklist: nextChecklist } : event)),
+    );
+
+    void updateEventRecord(ownerUserId, target.id, { checklist: nextChecklist }).catch((error) => {
+      console.error('Failed to add checklist item', error);
+      setEvents((prev) => prev.map((event) => (event.id === target.id ? target : event)));
+      Alert.alert('Event tasks', 'Unable to save the task right now.');
+    });
     setTaskModalVisible(false);
     setTaskModalEventId(null);
     setTaskTitle('');
-  }, [taskModalEventId, taskPhase, taskTitle, updateEvent]);
+  }, [events, ownerUserId, setEvents, taskModalEventId, taskPhase, taskTitle]);
 
   const daysInMonth = useMemo(() => {
     return new Date(pickerYear, pickerMonth + 1, 0).getDate();
@@ -348,7 +365,7 @@ export default function HomeScreen() {
     return activeDate.getDate();
   }, [datePickerType, eventEndDate, eventStartDate, pickerMonth, pickerYear]);
 
-  const handleSaveEvent = useCallback(() => {
+  const handleSaveEvent = useCallback(async () => {
     if (!eventName.trim()) {
       Alert.alert('Add event', 'Give your event a name.');
       return;
@@ -361,6 +378,11 @@ export default function HomeScreen() {
     const endDateValue = eventEndDate ?? eventStartDate;
     if (endDateValue.getTime() < eventStartDate.getTime()) {
       Alert.alert('Add event', 'End date can’t be earlier than the start date.');
+      return;
+    }
+
+    if (!ownerUserId) {
+      Alert.alert('Add event', 'Session owner not available yet.');
       return;
     }
 
@@ -379,38 +401,34 @@ export default function HomeScreen() {
       return;
     }
 
-    if (editingEventId) {
-      void updateEvent(editingEventId, (event) => ({
-        ...event,
-        name: trimmedName,
-        startDateISO: startISO,
-        endDateISO: endISO,
-        location: trimmedLocation ? trimmedLocation : null,
-        notes: trimmedNotes ? trimmedNotes : null,
-      }));
+    try {
+      if (editingEventId) {
+        await updateEventRecord(ownerUserId, editingEventId, {
+          name: trimmedName,
+          startDateISO: startISO,
+          endDateISO: endISO,
+          location: trimmedLocation ? trimmedLocation : null,
+          notes: trimmedNotes ? trimmedNotes : null,
+        });
+      } else {
+        await createEvent(ownerUserId, {
+          name: trimmedName,
+          startDateISO: startISO,
+          endDateISO: endISO,
+          location: trimmedLocation ? trimmedLocation : null,
+          notes: trimmedNotes ? trimmedNotes : null,
+          checklist: defaultChecklist.map((item, index) => ({
+            ...item,
+            id: `${item.id}-${Date.now()}-${index}`,
+          })),
+        });
+      }
       handleCloseEventModal();
-      return;
+    } catch (error) {
+      console.error('Failed to save event', error);
+      Alert.alert('Add event', 'Unable to save this event right now.');
     }
-
-    const timestamp = Date.now();
-
-    const newEvent: UpcomingEvent = {
-      id: `evt-${timestamp}-${Math.random().toString(36).slice(2, 8)}`,
-      name: trimmedName,
-      startDateISO: startISO,
-      endDateISO: endISO,
-      location: trimmedLocation ? trimmedLocation : null,
-      notes: trimmedNotes ? trimmedNotes : null,
-      checklist: defaultChecklist.map((item, index) => ({
-        ...item,
-        id: `${item.id}-${timestamp}-${index}`,
-      })),
-    };
-
-    void addEvent(newEvent);
-    handleCloseEventModal();
   }, [
-    addEvent,
     defaultChecklist,
     editingEventId,
     eventEndDate,
@@ -421,7 +439,7 @@ export default function HomeScreen() {
     futureEventCount,
     futureEventLimit,
     handleCloseEventModal,
-    updateEvent,
+    ownerUserId,
   ]);
 
   const handleRemoveEvent = useCallback(
@@ -435,12 +453,19 @@ export default function HomeScreen() {
             if (editingEventId === eventId) {
               handleCloseEventModal();
             }
-            void removeEvent(eventId);
+            if (!ownerUserId) {
+              Alert.alert('Remove event', 'Session owner not available yet.');
+              return;
+            }
+            void deleteEventRecord(ownerUserId, eventId).catch((error) => {
+              console.error('Failed to remove event', error);
+              Alert.alert('Remove event', 'Unable to remove this event right now.');
+            });
           },
         },
       ]);
     },
-    [editingEventId, handleCloseEventModal, removeEvent],
+    [editingEventId, handleCloseEventModal, ownerUserId],
   );
 
   const combinedLoading = loadingOrders || loadingInventory || loadingEvents || loadingStaged;
@@ -481,7 +506,7 @@ export default function HomeScreen() {
 
   const handleLoadAllForEvent = useCallback(
     (eventId: string) => {
-      if (!userId) {
+      if (!userId || !ownerUserId) {
         Alert.alert('Sign in required', 'Sign in to load staged inventory.');
         return;
       }
@@ -502,7 +527,7 @@ export default function HomeScreen() {
             style: 'default',
             onPress: async () => {
               try {
-                await loadStagedInventoryItems({ userId, eventId, items: itemsForEvent });
+                await loadStagedInventoryItems({ userId: ownerUserId, eventId, items: itemsForEvent });
                 if (stagedModalEventId === eventId) {
                   handleCloseStagedModal();
                 }
@@ -518,7 +543,17 @@ export default function HomeScreen() {
         ],
       );
     },
-    [events, handleCloseStagedModal, loadStagedInventoryItems, refreshInventory, refreshStaged, stagedByEvent, stagedModalEventId, userId],
+    [
+      events,
+      handleCloseStagedModal,
+      loadStagedInventoryItems,
+      refreshInventory,
+      refreshStaged,
+      stagedByEvent,
+      stagedModalEventId,
+      userId,
+      ownerUserId,
+    ],
   );
 
   const handleModalLoadAll = useCallback(() => {
@@ -544,14 +579,21 @@ export default function HomeScreen() {
 
   const handleToggleChecklistItem = useCallback(
     (eventId: string, itemId: string, done: boolean) => {
-      void updateEvent(eventId, (event) => ({
-        ...event,
-        checklist: event.checklist?.map((entry) =>
-          entry.id === itemId ? { ...entry, done } : entry,
-        ),
-      }));
+      if (!ownerUserId) return;
+      const target = events.find((event) => event.id === eventId);
+      if (!target) return;
+      const nextChecklist = (target.checklist ?? []).map((entry) =>
+        entry.id === itemId ? { ...entry, done } : entry,
+      );
+      setEvents((prev) =>
+        prev.map((event) => (event.id === eventId ? { ...event, checklist: nextChecklist } : event)),
+      );
+      void updateEventRecord(ownerUserId, eventId, { checklist: nextChecklist }).catch((error) => {
+        console.error('Failed to update checklist item', error);
+        setEvents((prev) => prev.map((event) => (event.id === eventId ? target : event)));
+      });
     },
-    [updateEvent],
+    [events, ownerUserId, setEvents],
   );
 
   return (

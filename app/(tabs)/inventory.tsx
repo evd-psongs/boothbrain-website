@@ -24,7 +24,8 @@ import { useSupabaseAuth } from '@/providers/SupabaseAuthProvider';
 import { useSession } from '@/providers/SessionProvider';
 import { useInventory } from '@/hooks/useInventory';
 import { useEventStagedInventory } from '@/hooks/useEventStagedInventory';
-import { useUpcomingEvents, type UpcomingEvent } from '@/hooks/useUpcomingEvents';
+import { useEvents } from '@/hooks/useEvents';
+import type { EventRecord } from '@/types/events';
 import type { EventStagedInventoryItem, InventoryItem } from '@/types/inventory';
 import { buildInventoryCsv, parseInventoryCsv } from '@/utils/inventoryCsv';
 import { createInventoryItem, updateInventoryItem } from '@/lib/inventory';
@@ -74,7 +75,7 @@ export default function InventoryScreen() {
   const router = useRouter();
   const { theme } = useTheme();
   const { user } = useSupabaseAuth();
-  const { currentSession } = useSession();
+  const { currentSession, sharedOwnerId, sharedPlanTier, sharedPlanPaused } = useSession();
 
   const [searchQuery, setSearchQuery] = useState('');
   const [summaryFilter, setSummaryFilter] = useState<SummaryFilter>('all');
@@ -92,14 +93,15 @@ export default function InventoryScreen() {
   const [stagedModalEventId, setStagedModalEventId] = useState<string | null>(null);
 
   const userId = user?.id ?? null;
-  const { items, loading, error, refresh } = useInventory(userId);
+  const ownerUserId = sharedOwnerId ?? userId;
+  const { items, loading, error, refresh } = useInventory(ownerUserId);
   const {
     stagedByEvent,
     loading: loadingStaged,
     error: stagedError,
     refresh: refreshStaged,
-  } = useEventStagedInventory(userId);
-  const { events: upcomingEvents } = useUpcomingEvents(userId);
+  } = useEventStagedInventory(ownerUserId);
+  const { events: upcomingEvents } = useEvents(ownerUserId);
 
   useEffect(() => {
     if (!feedback) return;
@@ -121,21 +123,26 @@ export default function InventoryScreen() {
 
   useFocusEffect(
     useCallback(() => {
-      if (!userId) return undefined;
+      if (!ownerUserId) return undefined;
       void refresh();
       void refreshStaged();
       return undefined;
-    }, [refresh, refreshStaged, userId]),
+    }, [refresh, refreshStaged, ownerUserId]),
   );
 
-  const planTier = user?.subscription?.plan?.tier ?? 'free';
-  const planPaused = Boolean(user?.subscription?.pausedAt);
+  const planTier = sharedPlanTier;
+  const planPaused = sharedPlanPaused;
   const planItemLimit = useMemo(() => {
     if (planPaused) return FREE_PLAN_ITEM_LIMIT;
     if (planTier === 'free') return FREE_PLAN_ITEM_LIMIT;
-    const fromPlan = user?.subscription?.plan?.maxInventoryItems;
-    return typeof fromPlan === 'number' && fromPlan > 0 ? fromPlan : null;
-  }, [planPaused, planTier, user?.subscription?.plan?.maxInventoryItems]);
+    if (!currentSession || currentSession.isHost) {
+      const fromPlan = user?.subscription?.plan?.maxInventoryItems;
+      if (typeof fromPlan === 'number' && fromPlan > 0) {
+        return fromPlan;
+      }
+    }
+    return null;
+  }, [planPaused, planTier, currentSession?.isHost, user?.subscription?.plan?.maxInventoryItems]);
 
   const lowStockItems = useMemo(
     () => items.filter((item) => item.quantity > 0 && item.quantity <= Math.max(item.lowStockThreshold, 0)),
@@ -145,7 +152,7 @@ export default function InventoryScreen() {
   const outOfStockItems = useMemo(() => items.filter((item) => item.quantity <= 0), [items]);
 
   const eventsById = useMemo(() => {
-    return upcomingEvents.reduce<Record<string, UpcomingEvent>>((acc, event) => {
+    return upcomingEvents.reduce<Record<string, EventRecord>>((acc, event) => {
       acc[event.id] = event;
       return acc;
     }, {});
@@ -205,8 +212,8 @@ export default function InventoryScreen() {
 
   const handleLoadAllForEvent = useCallback(
     (eventId: string) => {
-      if (!userId) {
-        setFeedback({ type: 'error', message: 'Sign in to load staged inventory.' });
+      if (!ownerUserId) {
+        setFeedback({ type: 'error', message: 'Session owner not available yet.' });
         return;
       }
 
@@ -227,7 +234,7 @@ export default function InventoryScreen() {
             style: 'default',
             onPress: async () => {
               try {
-                await loadStagedInventoryItems({ userId, eventId, items: itemsForEvent });
+                await loadStagedInventoryItems({ userId: ownerUserId, eventId, items: itemsForEvent });
                 if (stagedModalEventId === eventId) {
                   handleCloseStagedModal();
                 }
@@ -246,7 +253,17 @@ export default function InventoryScreen() {
         ],
       );
     },
-    [eventsById, handleCloseStagedModal, loadStagedInventoryItems, refresh, refreshStaged, setFeedback, stagedByEvent, stagedModalEventId, userId],
+    [
+      eventsById,
+      handleCloseStagedModal,
+      loadStagedInventoryItems,
+      refresh,
+      refreshStaged,
+      setFeedback,
+      stagedByEvent,
+      stagedModalEventId,
+      ownerUserId,
+    ],
   );
 
   const stats = useMemo<SummaryStat[]>(() => {
@@ -309,24 +326,24 @@ export default function InventoryScreen() {
 
   const handleEditStagedItem = useCallback(
     (eventId: string, stagedId: string) => {
-      if (!userId) {
-        setFeedback({ type: 'error', message: 'Sign in to edit staged inventory.' });
+      if (!userId || !ownerUserId) {
+        setFeedback({ type: 'error', message: 'Session owner not available yet.' });
         return;
       }
       router.push({ pathname: '/item-form', params: { mode: 'stage', eventId, stagedId } });
     },
-    [router, userId],
+    [router, userId, ownerUserId],
   );
 
   const handleReleaseStagedItem = useCallback(
     async (staged: EventStagedInventoryItem) => {
-      if (!userId) {
-        setFeedback({ type: 'error', message: 'Sign in to update staged inventory.' });
+      if (!userId || !ownerUserId) {
+        setFeedback({ type: 'error', message: 'Session owner not available yet.' });
         return;
       }
       try {
         await updateEventStagedInventoryStatus({
-          userId,
+          userId: ownerUserId,
           stagedId: staged.id,
           status: 'released',
           convertedItemId: null,
@@ -337,7 +354,7 @@ export default function InventoryScreen() {
         setFeedback({ type: 'error', message: 'Unable to release staged inventory right now.' });
       }
     },
-    [userId],
+    [userId, ownerUserId],
   );
 
   const handleReleaseStagedItemById = useCallback(
@@ -352,7 +369,7 @@ export default function InventoryScreen() {
 
   const applyInventoryRows = useCallback(
     async (rows: ReturnType<typeof parseInventoryCsv>) => {
-      if (!userId || !rows.length) return;
+      if (!ownerUserId || !rows.length) return;
 
       const existingBySku = new Map<string, InventoryItem>();
       const existingByName = new Map<string, InventoryItem>();
@@ -386,14 +403,14 @@ export default function InventoryScreen() {
 
         try {
           if (existing) {
-            await updateInventoryItem({ userId, itemId: existing.id, input });
+            await updateInventoryItem({ userId: ownerUserId, itemId: existing.id, input });
             updated += 1;
           } else {
             if (planItemLimit != null && totalTrackedCount + created >= planItemLimit) {
               skipped.push(`${row.name} (plan limit reached)`);
               continue;
             }
-            await createInventoryItem({ userId, input });
+            await createInventoryItem({ userId: ownerUserId, input });
             created += 1;
           }
         } catch (importError) {
@@ -419,12 +436,12 @@ export default function InventoryScreen() {
 
       setFeedback({ type: skipped.length ? 'info' : 'success', message });
     },
-    [items, currentSession?.eventId, planItemLimit, refresh, totalTrackedCount, userId],
+    [items, currentSession?.eventId, planItemLimit, refresh, totalTrackedCount, ownerUserId],
   );
 
   const handleImportCsv = useCallback(async () => {
-    if (!userId) {
-      setFeedback({ type: 'error', message: 'Sign in to import inventory.' });
+    if (!userId || !ownerUserId) {
+      setFeedback({ type: 'error', message: 'Session owner not available yet.' });
       return;
     }
 
@@ -455,7 +472,7 @@ export default function InventoryScreen() {
     } finally {
       setIsProcessingImport(false);
     }
-  }, [applyInventoryRows, userId]);
+  }, [applyInventoryRows, userId, ownerUserId]);
 
   const handleExportCsv = useCallback(async () => {
     if (!filteredItems.length) {
