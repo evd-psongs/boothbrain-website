@@ -1,4 +1,5 @@
 import { stripeRequest, stripeGet } from '../_shared/stripe.ts';
+import { requireUserMatch } from '../_shared/auth.ts';
 
 type PauseAction = 'pause' | 'resume';
 
@@ -96,6 +97,13 @@ Deno.serve(async (req) => {
 
     if (!userId) {
       return json({ error: 'userId is required.' }, 400);
+    }
+
+    try {
+      await requireUserMatch(req, userId);
+    } catch (authError) {
+      const status = (authError as { status?: number })?.status ?? 401;
+      return json({ error: (authError as Error).message ?? 'Unauthorized' }, status);
     }
 
     const subscription = await fetchSubscription(userId);
