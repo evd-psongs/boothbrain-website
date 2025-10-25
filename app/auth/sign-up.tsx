@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
@@ -10,6 +10,7 @@ import {
   View,
 } from 'react-native';
 import { Link, useRouter } from 'expo-router';
+import { Feather } from '@expo/vector-icons';
 
 import { useSupabaseAuth } from '@/providers/SupabaseAuthProvider';
 import { useTheme } from '@/providers/ThemeProvider';
@@ -27,6 +28,13 @@ export default function SignUpScreen() {
   const [localError, setLocalError] = useState<string | null>(null);
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [acceptedTerms, setAcceptedTerms] = useState(false);
+
+  useEffect(() => {
+    if (acceptedTerms && localError === 'You must agree to the Terms and Privacy Policy.') {
+      setLocalError(null);
+    }
+  }, [acceptedTerms, localError]);
 
   const displayError = localError || error;
   const emailError = displayError === EMAIL_IN_USE_MESSAGE ? displayError : null;
@@ -57,6 +65,11 @@ export default function SignUpScreen() {
       return;
     }
 
+    if (!acceptedTerms) {
+      setLocalError('You must agree to the Terms and Privacy Policy.');
+      return;
+    }
+
     setLocalError(null);
     clearError();
 
@@ -71,7 +84,7 @@ export default function SignUpScreen() {
       const friendly = mapSupabaseSignUpError(err);
       setLocalError(friendly);
     }
-  }, [email, password, confirmPassword, fullName, signUp, router, clearError]);
+  }, [email, password, confirmPassword, fullName, acceptedTerms, signUp, router, clearError]);
 
   return (
     <KeyboardAvoidingView
@@ -180,6 +193,45 @@ export default function SignUpScreen() {
           ) : null}
 
           <Pressable
+            style={styles.termsRow}
+            onPress={() => {
+              setAcceptedTerms((prev) => {
+                const next = !prev;
+                if (next && localError === 'You must agree to the Terms and Privacy Policy.') {
+                  setLocalError(null);
+                }
+                return next;
+              });
+            }}
+            hitSlop={8}
+          >
+            <View
+              style={[
+                styles.checkbox,
+                {
+                  borderColor: acceptedTerms ? theme.colors.primary : theme.colors.border,
+                  backgroundColor: acceptedTerms ? theme.colors.primary : 'transparent',
+                },
+              ]}
+            >
+              {acceptedTerms ? (
+                <Feather name="check" size={14} color={theme.colors.surface} />
+              ) : null}
+            </View>
+            <Text style={[styles.termsText, { color: theme.colors.textPrimary }]}>
+              I agree to the{' '}
+              <Link href="/legal/terms" push asChild>
+                <Text style={[styles.termsLink, { color: theme.colors.primary }]}>Terms</Text>
+              </Link>
+              {' '}and{' '}
+              <Link href="/legal/terms" push asChild>
+                <Text style={[styles.termsLink, { color: theme.colors.primary }]}>Privacy Policy</Text>
+              </Link>
+              .
+            </Text>
+          </Pressable>
+
+          <Pressable
             style={[
               styles.primaryButton,
               { backgroundColor: theme.colors.primary, opacity: loading ? 0.8 : 1 },
@@ -279,6 +331,28 @@ const styles = StyleSheet.create({
   primaryButtonText: {
     fontSize: 16,
     fontWeight: '600',
+  },
+  termsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  checkbox: {
+    width: 24,
+    height: 24,
+    borderRadius: 8,
+    borderWidth: 2,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  termsText: {
+    flex: 1,
+    fontSize: 13,
+    lineHeight: 18,
+  },
+  termsLink: {
+    fontWeight: '600',
+    textDecorationLine: 'underline',
   },
   footer: {
     flexDirection: 'row',

@@ -38,7 +38,7 @@ export default function SignInScreen() {
 
     try {
       await signIn({ email: trimmedEmail, password });
-      router.replace('/(tabs)/sale');
+      router.replace('/(tabs)/home');
     } catch (err) {
       console.error('Sign in failed', err);
     }

@@ -1,4 +1,5 @@
 import { Linking } from 'react-native';
+import * as ExpoLinking from 'expo-linking';
 
 import { supabase } from '@/lib/supabase';
 
@@ -22,6 +23,19 @@ const extractFunctionError = (error: any): string => {
   if (typeof error === 'object' && error !== null) {
     if (typeof error.details === 'string' && error.details.trim()) return error.details;
     if (typeof error.context === 'string' && error.context.trim()) return error.context;
+    if (typeof error.context === 'object' && error.context !== null) {
+      const { body } = error.context as { body?: string };
+      if (typeof body === 'string' && body.trim()) {
+        try {
+          const parsed = JSON.parse(body);
+          if (parsed?.error) return parsed.error;
+          if (parsed?.message) return parsed.message;
+          return body;
+        } catch {
+          return body;
+        }
+      }
+    }
   }
   if (typeof error === 'string') return error;
   if (error?.message) return error.message;
@@ -30,6 +44,13 @@ const extractFunctionError = (error: any): string => {
 };
 
 const openUrl = async (url: string) => {
+  if (!url) return;
+  const parsed = ExpoLinking.parse(url);
+  if (parsed?.scheme && parsed.scheme.startsWith('exp')) {
+    console.log('[Billing] Dev stub redirect skipped for Expo URL:', url);
+    return;
+  }
+
   const supported = await Linking.canOpenURL(url);
   if (!supported) {
     throw new Error('Unable to open checkout link on this device.');
@@ -38,21 +59,41 @@ const openUrl = async (url: string) => {
 };
 
 export async function startCheckoutSession(input: CheckoutSessionInput): Promise<void> {
-  const { planTier, userId, interval, successUrl, cancelUrl } = input;
+  const {
+    planTier,
+    userId,
+    interval,
+    successUrl,
+    cancelUrl,
+  } = input;
+
+  const appOrigin = process.env.EXPO_PUBLIC_SITE_URL
+    || (typeof ExpoLinking.createURL === 'function' ? ExpoLinking.createURL('/') : undefined)
+    || 'https://boothbrain.app/';
+  const normalizedOrigin = appOrigin.endsWith('/') ? appOrigin.slice(0, -1) : appOrigin;
+  const fallbackSuccessUrl = successUrl ?? `${normalizedOrigin}`;
+  const fallbackCancelUrl = cancelUrl ?? `${normalizedOrigin}`;
+  const requestInterval: BillingInterval = interval ?? 'monthly';
+
   const { data, error } = await supabase.functions.invoke('stripe-create-checkout', {
     body: {
       planTier,
-      interval,
+      interval: requestInterval,
       userId,
-      successUrl,
-      cancelUrl,
+      successUrl: fallbackSuccessUrl,
+      cancelUrl: fallbackCancelUrl,
       // Temporary compatibility while backend migrates away from organizations.
       organizationId: null,
     },
   });
 
   if (error) {
-    throw new Error(extractFunctionError(error));
+    console.error('stripe-create-checkout failed', error);
+    const message = extractFunctionError(error);
+    if (typeof message === 'string' && message.includes('Edge Function returned')) {
+      throw new Error('Checkout is unavailable right now. Please contact support (hello@boothbrain.com) so we can enable billing.');
+    }
+    throw new Error(message);
   }
 
   const url = (data as { url?: string } | null)?.url;
@@ -81,7 +122,12 @@ export async function openBillingPortal(input: BillingPortalInput): Promise<void
   });
 
   if (error) {
-    throw new Error(extractFunctionError(error));
+    console.error('stripe-billing-portal failed', error);
+    const message = extractFunctionError(error);
+    if (typeof message === 'string' && message.includes('Edge Function returned')) {
+      throw new Error('Billing portal is unavailable right now. Please contact support (hello@boothbrain.com).');
+    }
+    throw new Error(message);
   }
 
   const url = (data as { url?: string } | null)?.url;

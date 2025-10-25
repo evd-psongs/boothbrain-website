@@ -36,7 +36,7 @@ export default function VerifyEmailScreen() {
 
   useEffect(() => {
     if (!loading && session?.user?.email_confirmed_at) {
-      router.replace('/auth/sign-in');
+      router.replace('/(tabs)/home');
     }
   }, [loading, session?.user?.email_confirmed_at, router]);
 
@@ -68,8 +68,8 @@ export default function VerifyEmailScreen() {
         throw verifyError;
       }
 
-      setInfoMessage('Email verified! You can sign in now.');
-      router.replace('/auth/sign-in');
+      setInfoMessage('Email verified! Taking you to your dashboard…');
+      router.replace('/(tabs)/home');
     } catch (err: any) {
       const message = err?.message ?? 'Failed to verify code. Please try again.';
       setLocalError(message);

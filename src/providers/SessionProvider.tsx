@@ -173,27 +173,26 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
           throw new Error('Enter a session code to join.');
         }
 
-        const { data, error: fetchError } = await supabase
-          .from('sessions')
-          .select('code, event_id, host_user_id, host_device_id, created_at')
-          .eq('code', normalizedCode)
-          .maybeSingle();
+        const { data, error: fetchError } = await supabase.rpc('join_session_simple', {
+          session_code: normalizedCode,
+        });
 
         if (fetchError) {
           throw fetchError;
         }
 
-        if (!data) {
+        const row = Array.isArray(data) ? data[0] : null;
+        if (!row) {
           throw new Error('Session not found. Check the code and try again.');
         }
 
         const session: ActiveSession = {
-          code: data.code,
-          eventId: data.event_id,
-          hostUserId: data.host_user_id,
-          hostDeviceId: data.host_device_id,
-          createdAt: data.created_at,
-          isHost: data.host_user_id === user.id,
+          code: row.code,
+          eventId: row.event_id,
+          hostUserId: row.host_user_id,
+          hostDeviceId: row.host_device_id,
+          createdAt: row.created_at,
+          isHost: row.host_user_id === user.id,
         };
 
         setCurrentSession(session);
@@ -225,24 +224,28 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
   const refreshSession = useCallback(async () => {
     if (!currentSession) return;
     try {
-      const { data, error: fetchError } = await supabase
-        .from('sessions')
-        .select('code, event_id, host_user_id, host_device_id, created_at')
-        .eq('code', currentSession.code)
-        .maybeSingle();
+      const { data, error: fetchError } = await supabase.rpc('join_session_simple', {
+        session_code: currentSession.code,
+      });
 
-      if (fetchError || !data) {
+      if (fetchError) {
+        await endSession();
+        return;
+      }
+
+      const row = Array.isArray(data) ? data[0] : null;
+      if (!row) {
         await endSession();
         return;
       }
 
       const session: ActiveSession = {
-        code: data.code,
-        eventId: data.event_id,
-        hostUserId: data.host_user_id,
-        hostDeviceId: data.host_device_id,
-        createdAt: data.created_at,
-        isHost: user?.id === data.host_user_id,
+        code: row.code,
+        eventId: row.event_id,
+        hostUserId: row.host_user_id,
+        hostDeviceId: row.host_device_id,
+        createdAt: row.created_at,
+        isHost: user?.id === row.host_user_id,
       };
 
       setCurrentSession(session);

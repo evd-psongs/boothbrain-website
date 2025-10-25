@@ -29,8 +29,10 @@ import { deleteEventStagedInventoryItem, loadStagedInventoryItems } from '@/lib/
 import { removeItemImage } from '@/lib/itemImages';
 import { StagedInventoryModal } from '@/components/StagedInventoryModal';
 import type { EventStagedInventoryItem } from '@/types/inventory';
+import { formatCurrencyFromCents } from '@/utils/currency';
 
 const MONTH_LABELS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+const FREE_PLAN_EVENT_LIMIT = 1;
 
 const formatDateLabel = (date: Date | null) => {
   if (!date) return 'Select date';
@@ -60,6 +62,8 @@ export default function HomeScreen() {
   const router = useRouter();
   const { user } = useSupabaseAuth();
   const { currentSession } = useSession();
+  const planTier = user?.subscription?.plan?.tier ?? 'free';
+  const planPaused = Boolean(user?.subscription?.pausedAt);
 
   const userId = user?.id ?? null;
 
@@ -82,12 +86,22 @@ export default function HomeScreen() {
     refresh: refreshStaged,
     error: stagedError,
   } = useEventStagedInventory(userId);
+  const futureEventLimit = useMemo(() => {
+    if (planPaused) return FREE_PLAN_EVENT_LIMIT;
+    if (planTier === 'free') return FREE_PLAN_EVENT_LIMIT;
+    return null;
+  }, [planPaused, planTier]);
 
   useEffect(() => {
     if (stagedError) {
       Alert.alert('Staged inventory', stagedError);
     }
   }, [stagedError]);
+
+  const futureEventCount = useMemo(() => {
+    const now = Date.now();
+    return events.filter((event) => new Date(event.startDateISO).getTime() > now).length;
+  }, [events]);
 
   const handleAddStagedInventory = useCallback(
     (eventId: string) => {
@@ -356,6 +370,15 @@ export default function HomeScreen() {
     const startISO = eventStartDate.toISOString();
     const endISO = endDateValue.toISOString();
 
+    const isFutureEvent = eventStartDate.getTime() > Date.now();
+    if (!editingEventId && isFutureEvent && futureEventLimit != null && futureEventCount >= futureEventLimit) {
+      Alert.alert(
+        'Plan limit reached',
+        `The free plan lets you plan up to ${futureEventLimit} future event${futureEventLimit === 1 ? '' : 's'}.`,
+      );
+      return;
+    }
+
     if (editingEventId) {
       void updateEvent(editingEventId, (event) => ({
         ...event,
@@ -395,6 +418,8 @@ export default function HomeScreen() {
     eventName,
     eventNotes,
     eventStartDate,
+    futureEventCount,
+    futureEventLimit,
     handleCloseEventModal,
     updateEvent,
   ]);
@@ -585,6 +610,9 @@ export default function HomeScreen() {
                     (total, item) => total + (item.quantity ?? 0),
                     0,
                   );
+                  const stagedPreviewLimit = 3;
+                  const stagedPreview = stagedForEvent.slice(0, stagedPreviewLimit);
+                  const stagedHasMore = stagedItemCount > stagedPreview.length;
                   return (
                     <View
                       key={event.id}
@@ -639,22 +667,6 @@ export default function HomeScreen() {
                           {stagedItemCount ? (
                             <View style={styles.stagedSummaryActions}>
                               <Pressable
-                                onPress={() => handleLoadAllForEvent(event.id)}
-                                style={({ pressed }) => [
-                                  styles.stagedLoadButton,
-                                  {
-                                    borderColor: theme.colors.primary,
-                                    backgroundColor: pressed
-                                      ? 'rgba(101, 88, 245, 0.18)'
-                                      : 'rgba(101, 88, 245, 0.12)',
-                                  },
-                                ]}
-                                hitSlop={6}
-                              >
-                                <Feather name="log-in" size={14} color={theme.colors.primary} />
-                                <Text style={[styles.stagedViewText, { color: theme.colors.primary }]}>Load all</Text>
-                              </Pressable>
-                              <Pressable
                                 onPress={() => setStagedModalEventId(event.id)}
                                 style={({ pressed }) => [
                                   styles.stagedViewButton,
@@ -673,6 +685,43 @@ export default function HomeScreen() {
                             </View>
                           ) : null}
                         </View>
+
+                        {stagedItemCount ? (
+                          <View style={styles.stagedPreviewList}>
+                            {stagedPreview.map((item) => {
+                              const quantity = item.quantity ?? 0;
+                              const quantityLabel = `${quantity} unit${quantity === 1 ? '' : 's'}`;
+                              const priceLabel = formatCurrencyFromCents(item.priceCents, 'USD');
+                              return (
+                                <View
+                                  key={item.id}
+                                  style={[
+                                    styles.stagedPreviewRow,
+                                    {
+                                      borderColor: theme.colors.border,
+                                      backgroundColor: theme.colors.surface,
+                                    },
+                                  ]}
+                                >
+                                  <View style={{ flex: 1 }}>
+                                    <Text style={[styles.stagedPreviewName, { color: theme.colors.textPrimary }]}>
+                                      {item.name}
+                                    </Text>
+                                    <Text style={{ color: theme.colors.textSecondary }}>
+                                      {quantityLabel} • {priceLabel}
+                                    </Text>
+                                  </View>
+                                </View>
+                              );
+                            })}
+                            {stagedHasMore ? (
+                              <Text style={[styles.stagedPreviewMore, { color: theme.colors.textSecondary }]}>
+                                + {stagedItemCount - stagedPreview.length} more staged item
+                                {stagedItemCount - stagedPreview.length === 1 ? '' : 's'}
+                              </Text>
+                            ) : null}
+                          </View>
+                        ) : null}
 
                         <Pressable
                           onPress={() => handleAddStagedInventory(event.id)}
@@ -1390,6 +1439,27 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 8,
     flexWrap: 'wrap',
+  },
+  stagedPreviewList: {
+    gap: 8,
+  },
+  stagedPreviewRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderRadius: 10,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    gap: 12,
+  },
+  stagedPreviewName: {
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  stagedPreviewMore: {
+    fontSize: 12,
+    fontStyle: 'italic',
+    marginTop: 4,
   },
   prepHeaderActions: {
     flexDirection: 'row',
