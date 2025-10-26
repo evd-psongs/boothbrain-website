@@ -30,7 +30,7 @@ import {
   updateEventStagedInventoryItem,
   updateEventStagedInventoryStatus,
 } from '@/lib/eventStagedInventory';
-import { getItemImagePublicUrl, removeItemImage, uploadItemImage } from '@/lib/itemImages';
+import { getItemImageUrl, removeItemImage, uploadItemImage } from '@/lib/itemImages';
 import type { EventStagedInventoryItem } from '@/types/inventory';
 import { FREE_PLAN_ITEM_LIMIT } from '@/lib/freePlanLimits';
 
@@ -138,6 +138,33 @@ export default function ItemFormScreen() {
   useEffect(() => {
     let isActive = true;
 
+    const resolveImageState = async (paths: string[]): Promise<ItemImageState[]> => {
+      if (!paths.length) return [];
+
+      const results = await Promise.allSettled(paths.map((path) => getItemImageUrl(path)));
+
+      return paths.map((path, index) => {
+        const result = results[index];
+        if (result.status === 'fulfilled') {
+          return {
+            id: path,
+            uri: result.value,
+            path,
+            uploading: false,
+          };
+        }
+
+        console.warn('Failed to resolve item image URL', result.reason);
+
+        return {
+          id: path,
+          uri: '',
+          path,
+          uploading: false,
+        };
+      });
+    };
+
     const loadData = async () => {
       if (!ownerUserId) {
         if (isActive) {
@@ -174,12 +201,7 @@ export default function ItemFormScreen() {
               quantity: String(item.quantity ?? ''),
               lowStock: String(item.lowStockThreshold ?? ''),
             });
-            const mappedImages: ItemImageState[] = (item.imagePaths ?? []).map((path) => ({
-              id: path,
-              uri: getItemImagePublicUrl(path),
-              path,
-              uploading: false,
-            }));
+            const mappedImages = await resolveImageState(item.imagePaths ?? []);
             setImages(mappedImages);
             setRemovedImagePaths([]);
           }
@@ -196,12 +218,7 @@ export default function ItemFormScreen() {
               quantity: String(staged.quantity ?? ''),
               lowStock: String(staged.lowStockThreshold ?? ''),
             });
-            const mappedImages: ItemImageState[] = (staged.imagePaths ?? []).map((path) => ({
-              id: path,
-              uri: getItemImagePublicUrl(path),
-              path,
-              uploading: false,
-            }));
+            const mappedImages = await resolveImageState(staged.imagePaths ?? []);
             setImages(mappedImages);
             setRemovedImagePaths([]);
             setStagedItem(staged);
@@ -389,7 +406,7 @@ export default function ItemFormScreen() {
     }
 
     const uploadedDuringSave: string[] = [];
-    const uploadResults: Array<{ id: string; path: string; publicUrl: string }> = [];
+    const uploadResults: Array<{ id: string; path: string; url: string }> = [];
 
     try {
       setSaving(true);
@@ -405,12 +422,12 @@ export default function ItemFormScreen() {
 
       for (const image of pendingUploads) {
         try {
-          const { path, publicUrl } = await uploadItemImage({ userId: ownerUserId, uri: image.uri });
+          const { path, url } = await uploadItemImage({ userId: ownerUserId, uri: image.uri });
           uploadedDuringSave.push(path);
-          uploadResults.push({ id: image.id, path, publicUrl });
+          uploadResults.push({ id: image.id, path, url });
           setImages((prev) =>
             prev.map((img) =>
-              img.id === image.id ? { ...img, path, uri: publicUrl, uploading: false } : img,
+              img.id === image.id ? { ...img, path, uri: url, uploading: false } : img,
             ),
           );
         } catch (uploadError) {
@@ -517,14 +534,27 @@ export default function ItemFormScreen() {
         await Promise.allSettled(uploadedDuringSave.map((path) => removeItemImage(path)));
       }
       if (removedImagePaths.length) {
+        const results = await Promise.allSettled(removedImagePaths.map((path) => getItemImageUrl(path)));
         setImages((prev) => [
           ...prev,
-          ...removedImagePaths.map((path) => ({
-            id: path,
-            uri: getItemImagePublicUrl(path),
-            path,
-            uploading: false,
-          })),
+          ...removedImagePaths.map((path, index) => {
+            const result = results[index];
+            if (result.status === 'fulfilled') {
+              return {
+                id: path,
+                uri: result.value,
+                path,
+                uploading: false,
+              };
+            }
+            console.warn('Failed to restore item image URL after error', result.reason);
+            return {
+              id: path,
+              uri: '',
+              path,
+              uploading: false,
+            };
+          }),
         ]);
         setRemovedImagePaths([]);
       }

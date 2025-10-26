@@ -3,10 +3,11 @@ import * as FileSystem from 'expo-file-system/legacy';
 import { supabase } from '@/lib/supabase';
 
 const BUCKET = 'item-images';
+const DEFAULT_SIGNED_URL_TTL_SECONDS = 60 * 60; // 1 hour
 
 type UploadResult = {
   path: string;
-  publicUrl: string;
+  url: string;
 };
 
 const randomSuffix = () => Math.random().toString(36).slice(2, 10);
@@ -20,10 +21,18 @@ const guessContentType = (uri: string) => {
   return 'image/jpeg';
 };
 
-export const getItemImagePublicUrl = (path: string) => {
-  const { data } = supabase.storage.from(BUCKET).getPublicUrl(path);
-  return data.publicUrl;
-};
+export async function getItemImageUrl(path: string, expiresInSeconds = DEFAULT_SIGNED_URL_TTL_SECONDS): Promise<string> {
+  if (!path) {
+    throw new Error('No item image path provided.');
+  }
+
+  const { data, error } = await supabase.storage.from(BUCKET).createSignedUrl(path, expiresInSeconds);
+  if (error || !data?.signedUrl) {
+    throw error ?? new Error('Unable to create signed URL for item image.');
+  }
+
+  return data.signedUrl;
+}
 
 export async function uploadItemImage({
   userId,
@@ -57,9 +66,11 @@ export async function uploadItemImage({
     throw error;
   }
 
+  const url = await getItemImageUrl(path);
+
   return {
     path,
-    publicUrl: getItemImagePublicUrl(path),
+    url,
   };
 }
 
