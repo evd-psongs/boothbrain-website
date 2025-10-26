@@ -1,10 +1,18 @@
+import { useEffect } from 'react';
 import { Stack } from 'expo-router';
 
 import { ThemeProvider } from '@/providers/ThemeProvider';
 import { SupabaseAuthProvider } from '@/providers/SupabaseAuthProvider';
 import { SessionProvider } from '@/providers/SessionProvider';
+import { ensureSentry, isSentryEnabled, withSentryWrap } from '@/lib/monitoring';
 
-export default function RootLayout() {
+function RootLayout() {
+  useEffect(() => {
+    if (isSentryEnabled) {
+      void ensureSentry();
+    }
+  }, []);
+
   return (
     <ThemeProvider>
       <SupabaseAuthProvider>
@@ -15,3 +23,5 @@ export default function RootLayout() {
     </ThemeProvider>
   );
 }
+
+export default isSentryEnabled ? withSentryWrap(RootLayout) : RootLayout;

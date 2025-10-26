@@ -3,6 +3,7 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.45.4?target
 
 import { stripeRequest, createStripeCustomer } from '../_shared/stripe.ts';
 import { requireUserMatch } from '../_shared/auth.ts';
+import { withMonitoring } from '../_shared/monitoring.ts';
 
 type PortalRequest = {
   userId?: string;
@@ -53,49 +54,54 @@ async function ensureStripeCustomer(userId: string, existingCustomerId: string |
   return customer.id as string;
 }
 
-serve(async (req) => {
-  if (req.method === 'OPTIONS') {
-    return new Response('ok', { status: 200 });
-  }
+serve((req) =>
+  withMonitoring({
+    req,
+    handler: async () => {
+      if (req.method === 'OPTIONS') {
+        return new Response('ok', { status: 200 });
+      }
 
-  if (req.method !== 'POST') {
-    return json({ error: 'Method not allowed' }, 405);
-  }
+      if (req.method !== 'POST') {
+        return json({ error: 'Method not allowed' }, 405);
+      }
 
-  try {
-    const { userId, returnUrl } = (await req.json()) as PortalRequest;
+      try {
+        const { userId, returnUrl } = (await req.json()) as PortalRequest;
 
-    if (!userId) {
-      return json({ error: 'userId is required.' }, 400);
-    }
+        if (!userId) {
+          return json({ error: 'userId is required.' }, 400);
+        }
 
-    try {
-      await requireUserMatch(req, userId);
-    } catch (authError) {
-      const status = (authError as { status?: number })?.status ?? 401;
-      return json({ error: (authError as Error).message ?? 'Unauthorized' }, status);
-    }
+        try {
+          await requireUserMatch(req, userId);
+        } catch (authError) {
+          const status = (authError as { status?: number })?.status ?? 401;
+          return json({ error: (authError as Error).message ?? 'Unauthorized' }, status);
+        }
 
-    const { data: subscription, error } = await supabaseAdmin
-      .from('subscriptions')
-      .select('id, stripe_customer_id')
-      .eq('user_id', userId)
-      .maybeSingle();
-    if (error) throw error;
-    if (!subscription) {
-      return json({ error: 'Subscription not found.' }, 404);
-    }
+        const { data: subscription, error } = await supabaseAdmin
+          .from('subscriptions')
+          .select('id, stripe_customer_id')
+          .eq('user_id', userId)
+          .maybeSingle();
+        if (error) throw error;
+        if (!subscription) {
+          return json({ error: 'Subscription not found.' }, 404);
+        }
 
-    const stripeCustomerId = await ensureStripeCustomer(userId, subscription.stripe_customer_id ?? null);
+        const stripeCustomerId = await ensureStripeCustomer(userId, subscription.stripe_customer_id ?? null);
 
-    const session = await stripeRequest('billing_portal/sessions', {
-      customer: stripeCustomerId,
-      return_url: sanitizeReturnUrl(returnUrl),
-    });
+        const session = await stripeRequest('billing_portal/sessions', {
+          customer: stripeCustomerId,
+          return_url: sanitizeReturnUrl(returnUrl),
+        });
 
-    return json({ url: session.url as string });
-  } catch (error) {
-    console.error('stripe-billing-portal error', error);
-    return json({ error: (error as Error).message ?? 'Failed to open billing portal.' }, 500);
-  }
-});
+        return json({ url: session.url as string });
+      } catch (error) {
+        console.error('stripe-billing-portal error', error);
+        return json({ error: (error as Error).message ?? 'Failed to open billing portal.' }, 500);
+      }
+    },
+  }),
+);

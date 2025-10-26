@@ -28,6 +28,7 @@ import { createEvent, updateEventRecord, deleteEventRecord } from '@/lib/events'
 import { StagedInventoryModal } from '@/components/StagedInventoryModal';
 import type { EventStagedInventoryItem } from '@/types/inventory';
 import { formatCurrencyFromCents } from '@/utils/currency';
+import { captureException } from '@/lib/monitoring';
 
 const MONTH_LABELS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 const FREE_PLAN_EVENT_LIMIT = 1;
@@ -88,6 +89,7 @@ export default function HomeScreen() {
     if (planTier === 'free') return FREE_PLAN_EVENT_LIMIT;
     return null;
   }, [planPaused, planTier]);
+  const showSentryTestButton = false;
 
   useEffect(() => {
     if (stagedError) {
@@ -198,6 +200,10 @@ export default function HomeScreen() {
     void refreshEvents();
     void refreshStaged();
   }, [refreshEvents, refreshInventory, refreshOrders, refreshStaged]);
+
+  const handleTriggerSentryTest = useCallback(async () => {
+    await captureException(new Error('Manual Sentry test trigger'));
+  }, []);
 
   const openDatePicker = useCallback(
     (type: 'start' | 'end') => {
@@ -630,6 +636,22 @@ export default function HomeScreen() {
             </View>
             <Feather name="home" size={22} color={theme.colors.primary} />
           </View>
+
+          {showSentryTestButton ? (
+            <Pressable
+              onPress={handleTriggerSentryTest}
+              style={({ pressed }) => [
+                styles.sentryButton,
+                {
+                  borderColor: theme.colors.primary,
+                  backgroundColor: pressed ? 'rgba(101, 88, 245, 0.08)' : 'rgba(101, 88, 245, 0.12)',
+                },
+              ]}
+            >
+              <Feather name="alert-triangle" size={16} color={theme.colors.primary} />
+              <Text style={[styles.sentryButtonText, { color: theme.colors.primary }]}>Send Sentry test event</Text>
+            </Pressable>
+          ) : null}
 
           <View
             style={[styles.sectionCard, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}
@@ -1398,6 +1420,20 @@ const styles = StyleSheet.create({
   headerSubtitle: {
     fontSize: 14,
     marginTop: 4,
+  },
+  sentryButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    borderWidth: 1,
+    borderRadius: 999,
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    alignSelf: 'flex-start',
+  },
+  sentryButtonText: {
+    fontSize: 13,
+    fontWeight: '600',
   },
   metricsRow: {
     flexDirection: 'row',

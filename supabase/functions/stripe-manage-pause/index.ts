@@ -1,5 +1,6 @@
 import { stripeRequest, stripeGet } from '../_shared/stripe.ts';
 import { requireUserMatch } from '../_shared/auth.ts';
+import { withMonitoring } from '../_shared/monitoring.ts';
 
 type PauseAction = 'pause' | 'resume';
 
@@ -79,7 +80,10 @@ async function updateSubscription(id: string, payload: Record<string, unknown>):
   }
 }
 
-Deno.serve(async (req) => {
+Deno.serve((req) =>
+  withMonitoring({
+    req,
+    handler: async () => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { status: 200 });
   }
@@ -253,4 +257,6 @@ Deno.serve(async (req) => {
     const message = (error as Error)?.message ?? 'Failed to update subscription pause state.';
     return json({ error: message }, status);
   }
-});
+    },
+  }),
+);
