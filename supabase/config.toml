@@ -110,7 +110,7 @@ file_size_limit = "50MiB"
 # enabled = true
 
 [storage.buckets.item_images]
-public = true
+public = false
 file_size_limit = "10MiB"
 allowed_mime_types = ["image/png", "image/jpeg", "image/webp"]
 

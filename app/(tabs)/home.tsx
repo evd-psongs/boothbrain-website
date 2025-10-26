@@ -88,7 +88,6 @@ export default function HomeScreen() {
     if (planTier === 'free') return FREE_PLAN_EVENT_LIMIT;
     return null;
   }, [planPaused, planTier]);
-
   useEffect(() => {
     if (stagedError) {
       Alert.alert('Staged inventory', stagedError);
@@ -1045,10 +1044,23 @@ export default function HomeScreen() {
         visible={eventModalVisible}
         transparent
         animationType="fade"
-        onRequestClose={handleCloseEventModal}
+        onRequestClose={() => {
+          if (datePickerVisible) {
+            setDatePickerVisible(false);
+            setDatePickerType(null);
+            return;
+          }
+          handleCloseEventModal();
+        }}
       >
         <View style={styles.modalOverlay}>
-          <View style={[styles.modalCard, { backgroundColor: theme.colors.surface }]}
+          <View
+            style={[
+              styles.modalCard,
+              { backgroundColor: theme.colors.surface },
+              datePickerVisible ? { opacity: 0.4 } : null,
+            ]}
+            pointerEvents={datePickerVisible ? 'none' : 'auto'}
           >
             <View style={styles.modalHeader}>
               <Text style={[styles.modalTitle, { color: theme.colors.textPrimary }]}>
@@ -1149,102 +1161,101 @@ export default function HomeScreen() {
               </Text>
             </Pressable>
           </View>
-        </View>
-      </Modal>
 
-      <Modal
-        visible={datePickerVisible}
-        transparent
-        animationType="fade"
-        onRequestClose={() => {
-          setDatePickerVisible(false);
-          setDatePickerType(null);
-        }}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={[styles.datePickerCard, { backgroundColor: theme.colors.surface }]}>
-            <View style={styles.datePickerHeader}>
-              <Pressable onPress={() => handleAdjustYear(-1)} hitSlop={10}>
-                <Feather name="chevron-left" size={18} color={theme.colors.textPrimary} />
-              </Pressable>
-              <Text style={[styles.datePickerYear, { color: theme.colors.textPrimary }]}>{pickerYear}</Text>
-              <Pressable onPress={() => handleAdjustYear(1)} hitSlop={10}>
-                <Feather name="chevron-right" size={18} color={theme.colors.textPrimary} />
-              </Pressable>
-            </View>
-            <View style={styles.monthSelectorRow}>
-              {MONTH_LABELS.map((label, index) => {
-                const active = pickerMonth === index;
-                return (
-                  <Pressable
-                    key={label}
-                    onPress={() => handleSelectMonth(index)}
-                    style={({ pressed }) => [
-                      styles.monthChip,
-                      {
-                        backgroundColor: active ? theme.colors.primary : 'transparent',
-                        borderColor: active ? theme.colors.primary : theme.colors.border,
-                        opacity: pressed ? 0.85 : 1,
-                      },
-                    ]}
-                  >
-                    <Text
-                      style={{
-                        color: active ? theme.colors.surface : theme.colors.textPrimary,
-                        fontWeight: active ? '600' : '500',
-                      }}
-                    >
-                      {label}
-                    </Text>
+          {datePickerVisible ? (
+            <View style={styles.datePickerOverlay}>
+              <Pressable
+                style={styles.datePickerBackdrop}
+                onPress={() => {
+                  setDatePickerVisible(false);
+                  setDatePickerType(null);
+                }}
+              />
+              <View style={[styles.datePickerCard, { backgroundColor: theme.colors.surface }]}>
+                <View style={styles.datePickerHeader}>
+                  <Pressable onPress={() => handleAdjustYear(-1)} hitSlop={10}>
+                    <Feather name="chevron-left" size={18} color={theme.colors.textPrimary} />
                   </Pressable>
-                );
-              })}
-            </View>
-            <View style={styles.dayGrid}>
-              {Array.from({ length: daysInMonth }, (_, index) => {
-                const day = index + 1;
-                const active = selectedDayForPicker === day;
-                return (
-                  <Pressable
-                    key={day}
-                    onPress={() => handleSelectDate(day)}
-                    style={({ pressed }) => [
-                      styles.dayButton,
-                      {
-                        backgroundColor: active ? theme.colors.primary : 'transparent',
-                        borderColor: active ? theme.colors.primary : theme.colors.border,
-                        opacity: pressed ? 0.8 : 1,
-                      },
-                    ]}
-                  >
-                    <Text
-                      style={{
-                        color: active ? theme.colors.surface : theme.colors.textPrimary,
-                        fontWeight: active ? '600' : '500',
-                      }}
-                    >
-                      {day}
-                    </Text>
+                  <Text style={[styles.datePickerYear, { color: theme.colors.textPrimary }]}>{pickerYear}</Text>
+                  <Pressable onPress={() => handleAdjustYear(1)} hitSlop={10}>
+                    <Feather name="chevron-right" size={18} color={theme.colors.textPrimary} />
                   </Pressable>
-                );
-              })}
+                </View>
+                <View style={styles.monthSelectorRow}>
+                  {MONTH_LABELS.map((label, index) => {
+                    const active = pickerMonth === index;
+                    return (
+                      <Pressable
+                        key={label}
+                        onPress={() => handleSelectMonth(index)}
+                        style={({ pressed }) => [
+                          styles.monthChip,
+                          {
+                            backgroundColor: active ? theme.colors.primary : 'transparent',
+                            borderColor: active ? theme.colors.primary : theme.colors.border,
+                            opacity: pressed ? 0.85 : 1,
+                          },
+                        ]}
+                      >
+                        <Text
+                          style={{
+                            color: active ? theme.colors.surface : theme.colors.textPrimary,
+                            fontWeight: active ? '600' : '500',
+                          }}
+                        >
+                          {label}
+                        </Text>
+                      </Pressable>
+                    );
+                  })}
+                </View>
+                <View style={styles.dayGrid}>
+                  {Array.from({ length: daysInMonth }, (_, index) => {
+                    const day = index + 1;
+                    const active = selectedDayForPicker === day;
+                    return (
+                      <Pressable
+                        key={day}
+                        onPress={() => handleSelectDate(day)}
+                        style={({ pressed }) => [
+                          styles.dayButton,
+                          {
+                            backgroundColor: active ? theme.colors.primary : 'transparent',
+                            borderColor: active ? theme.colors.primary : theme.colors.border,
+                            opacity: pressed ? 0.8 : 1,
+                          },
+                        ]}
+                      >
+                        <Text
+                          style={{
+                            color: active ? theme.colors.surface : theme.colors.textPrimary,
+                            fontWeight: active ? '600' : '500',
+                          }}
+                        >
+                          {day}
+                        </Text>
+                      </Pressable>
+                    );
+                  })}
+                </View>
+                <Pressable
+                  onPress={() => {
+                    setDatePickerVisible(false);
+                    setDatePickerType(null);
+                  }}
+                  style={({ pressed }) => [
+                    styles.datePickerCancel,
+                    {
+                      opacity: pressed ? 0.8 : 1,
+                      borderColor: theme.colors.border,
+                    },
+                  ]}
+                >
+                  <Text style={{ color: theme.colors.textSecondary }}>Cancel</Text>
+                </Pressable>
+              </View>
             </View>
-            <Pressable
-              onPress={() => {
-                setDatePickerVisible(false);
-                setDatePickerType(null);
-              }}
-              style={({ pressed }) => [
-                styles.datePickerCancel,
-                {
-                  opacity: pressed ? 0.8 : 1,
-                  borderColor: theme.colors.border,
-                },
-              ]}
-            >
-              <Text style={{ color: theme.colors.textSecondary }}>Cancel</Text>
-            </Pressable>
-          </View>
+          ) : null}
         </View>
       </Modal>
 
@@ -1619,6 +1630,7 @@ const styles = StyleSheet.create({
     padding: 20,
     gap: 16,
     width: '100%',
+    zIndex: 1,
   },
   datePickerHeader: {
     flexDirection: 'row',
@@ -1664,6 +1676,15 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(9, 10, 15, 0.45)',
     justifyContent: 'center',
     padding: 20,
+  },
+  datePickerOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(9, 10, 15, 0.45)',
+    justifyContent: 'center',
+    padding: 20,
+  },
+  datePickerBackdrop: {
+    ...StyleSheet.absoluteFillObject,
   },
   modalCard: {
     borderRadius: 16,

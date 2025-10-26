@@ -28,7 +28,7 @@ import { useInventory } from '@/hooks/useInventory';
 import type { InventoryItem } from '@/types/inventory';
 import { formatCurrencyFromCents } from '@/utils/currency';
 import { fetchUserSettings, setUserSetting } from '@/lib/settings';
-import { getItemImagePublicUrl } from '@/lib/itemImages';
+import { getItemImageUrl } from '@/lib/itemImages';
 import { useCartStore, type CartLine } from '@/state/cartStore';
 import type { PaymentMethod } from '@/types/orders';
 
@@ -859,7 +859,36 @@ function InventoryListItem({
   onPreviewImage?: (uri: string) => void;
 }) {
   const firstImagePath = item.imagePaths?.[0] ?? null;
-  const imageUri = firstImagePath ? getItemImagePublicUrl(firstImagePath) : null;
+  const [imageUri, setImageUri] = useState<string | null>(null);
+
+  useEffect(() => {
+    let isActive = true;
+
+    if (!firstImagePath) {
+      setImageUri(null);
+      return () => {
+        isActive = false;
+      };
+    }
+
+    (async () => {
+      try {
+        const url = await getItemImageUrl(firstImagePath);
+        if (isActive) {
+          setImageUri(url);
+        }
+      } catch (error) {
+        console.warn('Failed to load inventory image', error);
+        if (isActive) {
+          setImageUri(null);
+        }
+      }
+    })();
+
+    return () => {
+      isActive = false;
+    };
+  }, [firstImagePath]);
   const lowStock = item.quantity > 0 && item.quantity <= Math.max(item.lowStockThreshold, 0);
   const outOfStock = item.quantity <= 0;
 

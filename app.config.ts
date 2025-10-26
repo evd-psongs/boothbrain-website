@@ -38,6 +38,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     'expo-secure-store',
     'expo-document-picker',
     'expo-camera',
+    'sentry-expo',
   ],
   experiments: {
     typedRoutes: true,
@@ -48,5 +49,10 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     },
     supabaseUrl: process.env.EXPO_PUBLIC_SUPABASE_URL,
     supabaseAnonKey: process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY,
+    sentryDsn: process.env.EXPO_PUBLIC_SENTRY_DSN,
+    environment: process.env.EXPO_PUBLIC_ENVIRONMENT ?? 'production',
+    eas: {
+      projectId: '9e8924e1-5394-4cc3-86dc-499d23ebe789',
+    },
   },
 });

@@ -3,6 +3,7 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.45.4?target
 
 import { stripeRequest, createStripeCustomer } from '../_shared/stripe.ts';
 import { requireUserMatch } from '../_shared/auth.ts';
+import { withMonitoring } from '../_shared/monitoring.ts';
 
 type CheckoutRequest = {
   planTier?: string;
@@ -112,82 +113,87 @@ async function upsertSubscription(
   return data.id as string;
 }
 
-serve(async (req) => {
-  if (req.method === 'OPTIONS') {
-    return new Response('ok', { status: 200 });
-  }
+serve((req) =>
+  withMonitoring({
+    req,
+    handler: async () => {
+      if (req.method === 'OPTIONS') {
+        return new Response('ok', { status: 200 });
+      }
 
-  if (req.method !== 'POST') {
-    return json({ error: 'Method not allowed' }, 405);
-  }
+      if (req.method !== 'POST') {
+        return json({ error: 'Method not allowed' }, 405);
+      }
 
-  try {
-    const { planTier, userId, interval, successUrl, cancelUrl } = (await req.json()) as CheckoutRequest;
+      try {
+        const { planTier, userId, interval, successUrl, cancelUrl } = (await req.json()) as CheckoutRequest;
 
-    if (!planTier || !userId) {
-      return json({ error: 'planTier and userId are required.' }, 400);
-    }
+        if (!planTier || !userId) {
+          return json({ error: 'planTier and userId are required.' }, 400);
+        }
 
-    try {
-      await requireUserMatch(req, userId);
-    } catch (authError) {
-      const status = (authError as { status?: number })?.status ?? 401;
-      return json({ error: (authError as Error).message ?? 'Unauthorized' }, status);
-    }
+        try {
+          await requireUserMatch(req, userId);
+        } catch (authError) {
+          const status = (authError as { status?: number })?.status ?? 401;
+          return json({ error: (authError as Error).message ?? 'Unauthorized' }, status);
+        }
 
-    const plan = await fetchPlan(planTier);
-    if (!plan) {
-      return json({ error: `Plan ${planTier} not found.` }, 404);
-    }
+        const plan = await fetchPlan(planTier);
+        if (!plan) {
+          return json({ error: `Plan ${planTier} not found.` }, 404);
+        }
 
-    const priceId = (interval === 'yearly'
-      ? plan.stripe_price_id_yearly ?? plan.stripe_price_id
-      : plan.stripe_price_id) ?? null;
+        const priceId = (interval === 'yearly'
+          ? plan.stripe_price_id_yearly ?? plan.stripe_price_id
+          : plan.stripe_price_id) ?? null;
 
-    if (!priceId) {
-      return json({ error: `Plan ${planTier} is missing Stripe price configuration.` }, 400);
-    }
+        if (!priceId) {
+          return json({ error: `Plan ${planTier} is missing Stripe price configuration.` }, 400);
+        }
 
-    const { data: subscriptionRow, error: subscriptionError } = await supabaseAdmin
-      .from('subscriptions')
-      .select('stripe_customer_id')
-      .eq('user_id', userId)
-      .maybeSingle();
-    if (subscriptionError) throw subscriptionError;
+        const { data: subscriptionRow, error: subscriptionError } = await supabaseAdmin
+          .from('subscriptions')
+          .select('stripe_customer_id')
+          .eq('user_id', userId)
+          .maybeSingle();
+        if (subscriptionError) throw subscriptionError;
 
-    const stripeCustomerId = await ensureStripeCustomer(userId, subscriptionRow?.stripe_customer_id ?? null);
-    const subscriptionId = await upsertSubscription(userId, plan.id as string, stripeCustomerId);
+        const stripeCustomerId = await ensureStripeCustomer(userId, subscriptionRow?.stripe_customer_id ?? null);
+        const subscriptionId = await upsertSubscription(userId, plan.id as string, stripeCustomerId);
 
-    const finalSuccessUrl = successUrl ?? `${fallbackBaseUrl}/billing/success`;
-    const finalCancelUrl = cancelUrl ?? `${fallbackBaseUrl}/billing/cancel`;
+        const finalSuccessUrl = successUrl ?? `${fallbackBaseUrl}/billing/success`;
+        const finalCancelUrl = cancelUrl ?? `${fallbackBaseUrl}/billing/cancel`;
 
-    const params: Record<string, string | number | boolean> = {
-      mode: 'subscription',
-      customer: stripeCustomerId,
-      success_url: finalSuccessUrl,
-      cancel_url: finalCancelUrl,
-      allow_promotion_codes: true,
-      'line_items[0][price]': priceId,
-      'line_items[0][quantity]': 1,
-      'metadata[supabase_user_id]': userId,
-      'metadata[plan_tier]': plan.tier,
-      'metadata[plan_id]': plan.id as string,
-      'metadata[subscription_id]': subscriptionId,
-      'subscription_data[metadata][supabase_user_id]': userId,
-      'subscription_data[metadata][plan_tier]': plan.tier,
-      'subscription_data[metadata][plan_id]': plan.id as string,
-      'subscription_data[metadata][subscription_id]': subscriptionId,
-    };
+        const params: Record<string, string | number | boolean> = {
+          mode: 'subscription',
+          customer: stripeCustomerId,
+          success_url: finalSuccessUrl,
+          cancel_url: finalCancelUrl,
+          allow_promotion_codes: true,
+          'line_items[0][price]': priceId,
+          'line_items[0][quantity]': 1,
+          'metadata[supabase_user_id]': userId,
+          'metadata[plan_tier]': plan.tier,
+          'metadata[plan_id]': plan.id as string,
+          'metadata[subscription_id]': subscriptionId,
+          'subscription_data[metadata][supabase_user_id]': userId,
+          'subscription_data[metadata][plan_tier]': plan.tier,
+          'subscription_data[metadata][plan_id]': plan.id as string,
+          'subscription_data[metadata][subscription_id]': subscriptionId,
+        };
 
-    if (typeof plan.trial_period_days === 'number') {
-      params['subscription_data[trial_period_days]'] = plan.trial_period_days;
-    }
+        if (typeof plan.trial_period_days === 'number') {
+          params['subscription_data[trial_period_days]'] = plan.trial_period_days;
+        }
 
-    const session = await stripeRequest('checkout/sessions', params);
+        const session = await stripeRequest('checkout/sessions', params);
 
-    return json({ url: session.url as string });
-  } catch (error) {
-    console.error('stripe-create-checkout error', error);
-    return json({ error: (error as Error).message ?? 'Failed to start checkout.' }, 500);
-  }
-});
+        return json({ url: session.url as string });
+      } catch (error) {
+        console.error('stripe-create-checkout error', error);
+        return json({ error: (error as Error).message ?? 'Failed to start checkout.' }, 500);
+      }
+    },
+  }),
+);

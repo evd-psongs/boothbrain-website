@@ -24,7 +24,8 @@ import { startCheckoutSession, openBillingPortal } from '@/lib/billing';
 import { updateProfile } from '@/lib/profile';
 import { deleteUserSetting, fetchUserSettings, setUserSetting } from '@/lib/settings';
 import { pauseSubscription, resumeSubscription } from '@/lib/subscriptions';
-import { useSession } from '@/providers/SessionProvider';
+import { supabase } from '@/lib/supabase';
+import { useSession, SESSION_CODE_LENGTH } from '@/providers/SessionProvider';
 import { useSupabaseAuth } from '@/providers/SupabaseAuthProvider';
 import { useTheme } from '@/providers/ThemeProvider';
 import { formatCurrencyFromCents } from '@/utils/currency';
@@ -77,6 +78,23 @@ const DEFAULT_PAYMENT_VALUES: PaymentValues = {
   paypalQrUri: '',
 };
 
+type PendingJoinRequest = {
+  id: string;
+  participantUserId: string;
+  participantName: string;
+  participantEmail: string;
+  requestedAt: string;
+  deviceId: string | null;
+};
+
+type SecurityOverview = {
+  sessionCode: string;
+  pendingRequests: number;
+  recentFailedAttempts: number;
+  recentRateLimited: number;
+  lastFailedAttempt: string | null;
+};
+
 const FALLBACK_PRO_PLAN: SubscriptionPlan = {
   id: 'fallback-pro-plan',
   name: 'Pro',
@@ -105,21 +123,39 @@ function calculateDaysRemaining(targetDateIso: string | null): number | null {
   return Math.max(0, Math.ceil(diffMs / (1000 * 60 * 60 * 24)));
 }
 
-function formatSessionCode(code: string): string {
-  if (!code) return '';
-  const normalized = code.toUpperCase();
-  if (normalized.length <= 3) return normalized;
-  return `${normalized.slice(0, 3)}-${normalized.slice(3)}`;
-}
-
-function formatJoinCodeInput(value: string): string {
-  const cleaned = value.replace(/[^A-Za-z0-9]/g, '').toUpperCase().slice(0, 6);
-  if (cleaned.length <= 3) return cleaned;
-  return `${cleaned.slice(0, 3)}-${cleaned.slice(3)}`;
-}
+const SESSION_CODE_GROUP_SIZE = 4;
+const MIN_SESSION_PASSPHRASE_LENGTH = 8;
 
 function stripJoinCodeFormatting(value: string): string {
   return value.replace(/[^A-Za-z0-9]/g, '').toUpperCase();
+}
+
+function formatSessionCode(code: string): string {
+  const normalized = stripJoinCodeFormatting(code);
+  if (!normalized) return '';
+  const matcher = normalized.match(new RegExp(`.{1,${SESSION_CODE_GROUP_SIZE}}`, 'g'));
+  return matcher ? matcher.join('-') : normalized;
+}
+
+function formatJoinCodeInput(value: string): string {
+  const cleaned = stripJoinCodeFormatting(value).slice(0, SESSION_CODE_LENGTH);
+  const matcher = cleaned.match(new RegExp(`.{1,${SESSION_CODE_GROUP_SIZE}}`, 'g'));
+  return matcher ? matcher.join('-') : cleaned;
+}
+
+function formatRelativeTime(dateIso: string): string {
+  const timestamp = new Date(dateIso);
+  if (Number.isNaN(timestamp.getTime())) {
+    return '';
+  }
+  const diffMs = Date.now() - timestamp.getTime();
+  const diffMinutes = Math.max(0, Math.floor(diffMs / (1000 * 60)));
+  if (diffMinutes < 1) return 'just now';
+  if (diffMinutes < 60) return `${diffMinutes} minute${diffMinutes === 1 ? '' : 's'} ago`;
+  const diffHours = Math.floor(diffMinutes / 60);
+  if (diffHours < 24) return `${diffHours} hour${diffHours === 1 ? '' : 's'} ago`;
+  const diffDays = Math.floor(diffHours / 24);
+  return `${diffDays} day${diffDays === 1 ? '' : 's'} ago`;
 }
 
 function formatPlanPrice(plan: SubscriptionPlan): string {
@@ -390,6 +426,13 @@ export default function SettingsScreen() {
   const [creatingSession, setCreatingSession] = useState(false);
   const [joiningSession, setJoiningSession] = useState(false);
   const [joinCode, setJoinCode] = useState('');
+  const [sessionPassphrase, setSessionPassphrase] = useState('');
+  const [joinPassphrase, setJoinPassphrase] = useState('');
+  const [pendingRequests, setPendingRequests] = useState<PendingJoinRequest[]>([]);
+  const [loadingPendingRequests, setLoadingPendingRequests] = useState(false);
+  const [securityOverview, setSecurityOverview] = useState<SecurityOverview | null>(null);
+  const [loadingSecurityOverview, setLoadingSecurityOverview] = useState(false);
+  const [resolvingRequest, setResolvingRequest] = useState<{ id: string; mode: 'approve' | 'deny' } | null>(null);
   const [feedback, setFeedback] = useState<FeedbackState>(null);
   const [paymentValues, setPaymentValues] = useState<PaymentValues>(DEFAULT_PAYMENT_VALUES);
   const [initialPaymentValues, setInitialPaymentValues] = useState<PaymentValues>(DEFAULT_PAYMENT_VALUES);
@@ -513,7 +556,10 @@ export default function SettingsScreen() {
     [paymentValues, initialPaymentValues],
   );
 
-  const joinCodeReady = useMemo(() => stripJoinCodeFormatting(joinCode).length === 6, [joinCode]);
+  const joinCodeReady = useMemo(
+    () => stripJoinCodeFormatting(joinCode).length === SESSION_CODE_LENGTH,
+    [joinCode],
+  );
 
   const passwordValid = useMemo(() => {
     if (!newPassword || !confirmPassword) return false;
@@ -533,13 +579,101 @@ export default function SettingsScreen() {
     [clearError],
   );
 
+  const loadSecurityOverview = useCallback(async () => {
+    if (!currentSession?.isHost) {
+      setSecurityOverview(null);
+      return;
+    }
+    setLoadingSecurityOverview(true);
+    try {
+      const { data, error } = await supabase.rpc('get_session_security_overview', {
+        target_session_code: currentSession.code,
+      });
+      if (error) {
+        throw error;
+      }
+      const row = (Array.isArray(data) ? data[0] : data) ?? null;
+      if (!row) {
+        setSecurityOverview(null);
+        return;
+      }
+      setSecurityOverview({
+        sessionCode: row.session_code,
+        pendingRequests: row.pending_requests ?? 0,
+        recentFailedAttempts: row.recent_failed_attempts ?? 0,
+        recentRateLimited: row.recent_rate_limited ?? 0,
+        lastFailedAttempt: row.last_failed_attempt ?? null,
+      });
+    } catch (error: any) {
+      console.error('Failed to load security overview', error);
+    } finally {
+      setLoadingSecurityOverview(false);
+    }
+  }, [currentSession?.code, currentSession?.isHost]);
+
+  const loadPendingRequests = useCallback(async () => {
+    if (!currentSession?.isHost) {
+      setPendingRequests([]);
+      return;
+    }
+    setLoadingPendingRequests(true);
+    try {
+      const { data, error } = await supabase.rpc('list_pending_session_requests', {
+        target_session_code: currentSession.code,
+      });
+      if (error) {
+        throw error;
+      }
+      const rows = Array.isArray(data) ? data : [];
+      const normalized: PendingJoinRequest[] = rows.map((row: any) => ({
+        id: row.id,
+        participantUserId: row.participant_user_id,
+        participantName: row.participant_name ? String(row.participant_name) : 'Teammate',
+        participantEmail: row.participant_email ?? '',
+        requestedAt: row.requested_at,
+        deviceId: row.device_id ?? null,
+      }));
+      setPendingRequests(normalized);
+    } catch (error: any) {
+      console.error('Failed to load pending join requests', error);
+      showFeedback({
+        type: 'error',
+        message: error?.message ?? 'Failed to load join requests.',
+      });
+    } finally {
+      setLoadingPendingRequests(false);
+    }
+  }, [currentSession?.code, currentSession?.isHost, showFeedback]);
+
+  useEffect(() => {
+    if (!currentSession?.isHost) {
+      setPendingRequests([]);
+      setSecurityOverview(null);
+      return;
+    }
+    void loadPendingRequests();
+    void loadSecurityOverview();
+  }, [currentSession?.code, currentSession?.isHost, loadPendingRequests, loadSecurityOverview]);
+
   const handleCreateSession = useCallback(async () => {
     if (!user?.id) return;
+    const trimmedPassphrase = sessionPassphrase.trim();
+    if (trimmedPassphrase.length > 0 && trimmedPassphrase.length < MIN_SESSION_PASSPHRASE_LENGTH) {
+      showFeedback({
+        type: 'error',
+        message: `Passphrases must be at least ${MIN_SESSION_PASSPHRASE_LENGTH} characters.`,
+      });
+      return;
+    }
     setCreatingSession(true);
     clearError();
     try {
-      const session = await createSession();
+      const session = await createSession({
+        passphrase: trimmedPassphrase,
+        approvalRequired: true,
+      });
       setShowJoinForm(false);
+      setSessionPassphrase('');
       showFeedback({
         type: 'success',
         message: `Session created: ${formatSessionCode(session.code)}`,
@@ -550,32 +684,83 @@ export default function SettingsScreen() {
     } finally {
       setCreatingSession(false);
     }
-  }, [user?.id, createSession, clearError, showFeedback]);
+  }, [user?.id, createSession, sessionPassphrase, clearError, showFeedback]);
 
   const handleJoinSession = useCallback(async () => {
     if (!user?.id) return;
     const normalized = stripJoinCodeFormatting(joinCode);
-    if (normalized.length !== 6) {
-      showFeedback({ type: 'error', message: 'Enter a valid 6 character code to join.' });
+    if (normalized.length !== SESSION_CODE_LENGTH) {
+      showFeedback({
+        type: 'error',
+        message: `Enter a valid ${SESSION_CODE_LENGTH} character code to join.`,
+      });
+      return;
+    }
+    const trimmedPassphrase = joinPassphrase.trim();
+    if (trimmedPassphrase.length > 0 && trimmedPassphrase.length < MIN_SESSION_PASSPHRASE_LENGTH) {
+      showFeedback({
+        type: 'error',
+        message: `Passphrases must be at least ${MIN_SESSION_PASSPHRASE_LENGTH} characters.`,
+      });
       return;
     }
     setJoiningSession(true);
     clearError();
     try {
-      await joinSession(normalized);
-      setJoinCode('');
-      setShowJoinForm(false);
-      showFeedback({
-        type: 'success',
-        message: `Joined session ${formatSessionCode(normalized)}.`,
-      });
+      const result = await joinSession(normalized, { passphrase: trimmedPassphrase });
+      if (result.status === 'approved' && result.session) {
+        setJoinCode('');
+        setJoinPassphrase('');
+        setShowJoinForm(false);
+        showFeedback({
+          type: 'success',
+          message: `Joined session ${formatSessionCode(normalized)}.`,
+        });
+      } else {
+        showFeedback({
+          type: 'success',
+          message: result.message ?? 'Join request sent. Waiting for host approval.',
+        });
+      }
     } catch (error: any) {
       console.error('Failed to join session', error);
       showFeedback({ type: 'error', message: error?.message ?? 'Failed to join session.' });
     } finally {
       setJoiningSession(false);
     }
-  }, [user?.id, joinCode, joinSession, clearError, showFeedback]);
+  }, [user?.id, joinCode, joinPassphrase, joinSession, clearError, showFeedback]);
+
+  const handleResolveRequest = useCallback(
+    async (requestId: string, mode: 'approve' | 'deny') => {
+      if (!currentSession?.isHost) return;
+      clearError();
+      setResolvingRequest({ id: requestId, mode });
+      try {
+        const { error } = await supabase.rpc('resolve_session_join_request', {
+          membership_id: requestId,
+          approve: mode === 'approve',
+          note: mode === 'deny' ? 'denied_by_host' : null,
+        });
+        if (error) {
+          throw error;
+        }
+        showFeedback({
+          type: 'success',
+          message: mode === 'approve' ? 'Participant approved.' : 'Join request denied.',
+        });
+        await Promise.all([loadPendingRequests(), loadSecurityOverview()]);
+      } catch (error: any) {
+        console.error('Failed to resolve join request', error);
+        showFeedback({
+          type: 'error',
+          message: error?.message ?? 'Unable to update join request.',
+        });
+      } finally {
+        setResolvingRequest(null);
+      }
+    },
+    [currentSession?.isHost, clearError, loadPendingRequests, loadSecurityOverview, showFeedback],
+  );
 
   const handleShareSession = useCallback(async () => {
     if (!currentSession) return;
@@ -840,6 +1025,8 @@ export default function SettingsScreen() {
       await endSession();
       setJoinCode('');
       setShowJoinForm(false);
+      setJoinPassphrase('');
+      setSessionPassphrase('');
       showFeedback({ type: 'success', message: 'Session cleared.' });
     } catch (error: any) {
       console.error('Failed to clear session', error);
@@ -914,7 +1101,7 @@ export default function SettingsScreen() {
             <>
               <Text style={[styles.sessionHint, { color: theme.colors.textSecondary }]}>
                 {currentSession.isHost
-                  ? 'You are hosting this session. Share the code with teammates to let them connect.'
+                  ? 'You are hosting this session. Share the code (and passphrase if set) privately, then approve requests below.'
                   : 'You are connected to a shared session from another device.'}
               </Text>
 
@@ -939,16 +1126,180 @@ export default function SettingsScreen() {
                 </Text>
               </View>
 
+              <View style={styles.metaRow}>
+                <Text style={[styles.metaLabel, { color: theme.colors.textSecondary }]}>Passphrase required</Text>
+                <Text style={[styles.metaValue, { color: theme.colors.textPrimary }]}>
+                  {currentSession.requiresPassphrase ? 'Yes' : 'No'}
+                </Text>
+              </View>
+
+              <View style={styles.metaRow}>
+                <Text style={[styles.metaLabel, { color: theme.colors.textSecondary }]}>Host approval</Text>
+                <Text style={[styles.metaValue, { color: theme.colors.textPrimary }]}>
+                  {currentSession.approvalRequired ? 'Required' : 'Automatic'}
+                </Text>
+              </View>
+
               {currentSession.isHost ? (
-                <View style={styles.buttonSpacing}>
-                  <SecondaryButton
-                    title="Share code"
-                    onPress={handleShareSession}
-                    backgroundColor="transparent"
-                    borderColor={theme.colors.primary}
-                    textColor={theme.colors.primary}
-                  />
-                </View>
+                <>
+                  <View
+                    style={[
+                      styles.securityCard,
+                      { borderColor: theme.colors.border, backgroundColor: theme.colors.surfaceMuted },
+                    ]}
+                  >
+                    <View style={styles.securityHeader}>
+                      <Text style={[styles.securityTitle, { color: theme.colors.textPrimary }]}>Security overview</Text>
+                      <Pressable
+                        onPress={() => {
+                          void loadSecurityOverview();
+                        }}
+                        disabled={loadingSecurityOverview}
+                        style={styles.securityRefresh}
+                      >
+                        {loadingSecurityOverview ? (
+                          <ActivityIndicator size="small" color={theme.colors.textSecondary} />
+                        ) : (
+                          <Text style={[styles.securityRefreshText, { color: theme.colors.primary }]}>Refresh</Text>
+                        )}
+                      </Pressable>
+                    </View>
+                    <Text style={[styles.securityBody, { color: theme.colors.textSecondary }]}>
+                      Pending requests:{' '}
+                      <Text style={[styles.securityValue, { color: theme.colors.textPrimary }]}>
+                        {securityOverview?.pendingRequests ?? pendingRequests.length}
+                      </Text>
+                    </Text>
+                    <Text style={[styles.securityBody, { color: theme.colors.textSecondary }]}>
+                      Failed attempts (10 min):{' '}
+                      <Text style={[styles.securityValue, { color: theme.colors.textPrimary }]}>
+                        {securityOverview?.recentFailedAttempts ?? 0}
+                      </Text>
+                    </Text>
+                    <Text style={[styles.securityBody, { color: theme.colors.textSecondary }]}>
+                      Throttled attempts (10 min):{' '}
+                      <Text style={[styles.securityValue, { color: theme.colors.textPrimary }]}>
+                        {securityOverview?.recentRateLimited ?? 0}
+                      </Text>
+                    </Text>
+                    {securityOverview?.lastFailedAttempt ? (
+                      <Text style={[styles.securityBodyMuted, { color: theme.colors.textSecondary }]}>
+                        Last failed attempt {formatRelativeTime(securityOverview.lastFailedAttempt)}.
+                      </Text>
+                    ) : null}
+                    {(securityOverview?.recentFailedAttempts ?? 0) >= 5 ? (
+                      <Text style={[styles.securityWarning, { color: theme.colors.error }]}>
+                        Multiple failures detected. Rotate the session or end it if this wasn’t you.
+                      </Text>
+                    ) : null}
+                  </View>
+
+                  <View
+                    style={[
+                      styles.pendingCard,
+                      { borderColor: theme.colors.border, backgroundColor: theme.colors.surfaceMuted },
+                    ]}
+                  >
+                    <View style={styles.pendingHeader}>
+                      <Text style={[styles.pendingTitle, { color: theme.colors.textPrimary }]}>Pending join requests</Text>
+                      <Pressable
+                        onPress={() => {
+                          void loadPendingRequests();
+                        }}
+                        disabled={loadingPendingRequests}
+                        style={styles.securityRefresh}
+                      >
+                        {loadingPendingRequests ? (
+                          <ActivityIndicator size="small" color={theme.colors.textSecondary} />
+                        ) : (
+                          <Text style={[styles.securityRefreshText, { color: theme.colors.primary }]}>Refresh</Text>
+                        )}
+                      </Pressable>
+                    </View>
+                    {pendingRequests.length === 0 ? (
+                      <Text style={[styles.pendingEmptyText, { color: theme.colors.textSecondary }]}>
+                        No pending requests right now.
+                      </Text>
+                    ) : (
+                      pendingRequests.map((request) => {
+                        const isResolving = resolvingRequest?.id === request.id;
+                        const isApproving = isResolving && resolvingRequest?.mode === 'approve';
+                        const isDenying = isResolving && resolvingRequest?.mode === 'deny';
+                        return (
+                          <View
+                            key={request.id}
+                            style={[styles.pendingRow, { borderColor: theme.colors.border, backgroundColor: theme.colors.surface }]}
+                          >
+                            <View style={styles.pendingInfo}>
+                              <Text style={[styles.pendingName, { color: theme.colors.textPrimary }]}>
+                                {request.participantName}
+                              </Text>
+                              <Text style={[styles.pendingEmail, { color: theme.colors.textSecondary }]}>
+                                {request.participantEmail || 'No email on file'}
+                              </Text>
+                              <Text style={[styles.pendingMeta, { color: theme.colors.textSecondary }]}>
+                                Requested {formatRelativeTime(request.requestedAt)}
+                                {request.deviceId ? ` • ${request.deviceId}` : ''}
+                              </Text>
+                            </View>
+                            <View style={styles.pendingActions}>
+                              <Pressable
+                                disabled={Boolean(resolvingRequest)}
+                                onPress={() => {
+                                  void handleResolveRequest(request.id, 'deny');
+                                }}
+                                style={({ pressed }) => [
+                                  styles.pendingActionButton,
+                                  styles.pendingDenyButton,
+                                  {
+                                    borderColor: theme.colors.error,
+                                    opacity: pressed && !resolvingRequest ? 0.85 : 1,
+                                  },
+                                ]}
+                              >
+                                {isDenying ? (
+                                  <ActivityIndicator size="small" color={theme.colors.error} />
+                                ) : (
+                                  <Text style={[styles.pendingActionText, { color: theme.colors.error }]}>Deny</Text>
+                                )}
+                              </Pressable>
+                              <Pressable
+                                disabled={Boolean(resolvingRequest)}
+                                onPress={() => {
+                                  void handleResolveRequest(request.id, 'approve');
+                                }}
+                                style={({ pressed }) => [
+                                  styles.pendingActionButton,
+                                  styles.pendingApproveButton,
+                                  {
+                                    backgroundColor: theme.colors.primary,
+                                    opacity: pressed && !resolvingRequest ? 0.9 : 1,
+                                  },
+                                ]}
+                              >
+                                {isApproving ? (
+                                  <ActivityIndicator size="small" color={theme.colors.surface} />
+                                ) : (
+                                  <Text style={[styles.pendingActionText, { color: theme.colors.surface }]}>Approve</Text>
+                                )}
+                              </Pressable>
+                            </View>
+                          </View>
+                        );
+                      })
+                    )}
+                  </View>
+
+                  <View style={styles.buttonSpacing}>
+                    <SecondaryButton
+                      title="Share code"
+                      onPress={handleShareSession}
+                      backgroundColor="transparent"
+                      borderColor={theme.colors.primary}
+                      textColor={theme.colors.primary}
+                    />
+                  </View>
+                </>
               ) : null}
 
               <View style={styles.buttonSpacing}>
@@ -968,6 +1319,23 @@ export default function SettingsScreen() {
                 Create a session to broadcast inventory updates, or join one that’s already in progress.
               </Text>
 
+              <InputField
+                label="Optional passphrase"
+                value={sessionPassphrase}
+                onChange={setSessionPassphrase}
+                placeholder="Share privately with teammates"
+                placeholderColor={theme.colors.textMuted}
+                borderColor={theme.colors.border}
+                backgroundColor={theme.colors.surface}
+                textColor={theme.colors.textPrimary}
+                secureTextEntry
+                autoCapitalize="none"
+              />
+
+              <Text style={[styles.sessionSubHint, { color: theme.colors.textSecondary }]}>
+                Hosts must approve join requests. Passphrases need at least {MIN_SESSION_PASSPHRASE_LENGTH} characters.
+              </Text>
+
               <PrimaryButton
                 title="Create session"
                 onPress={handleCreateSession}
@@ -983,12 +1351,25 @@ export default function SettingsScreen() {
                     label="Join code"
                     value={joinCode}
                     onChange={handleJoinCodeChange}
-                    placeholder="ABC-123"
+                    placeholder="ABCD-EFGH-IJKL"
                     placeholderColor={theme.colors.textMuted}
                     borderColor={theme.colors.border}
                     backgroundColor={theme.colors.surface}
                     textColor={theme.colors.textPrimary}
                     autoCapitalize="characters"
+                  />
+
+                  <InputField
+                    label="Passphrase"
+                    value={joinPassphrase}
+                    onChange={setJoinPassphrase}
+                    placeholder="Enter passphrase (if required)"
+                    placeholderColor={theme.colors.textMuted}
+                    borderColor={theme.colors.border}
+                    backgroundColor={theme.colors.surface}
+                    textColor={theme.colors.textPrimary}
+                    secureTextEntry
+                    autoCapitalize="none"
                   />
 
                   <PrimaryButton
@@ -1006,6 +1387,7 @@ export default function SettingsScreen() {
                       clearError();
                       setShowJoinForm(false);
                       setJoinCode('');
+                      setJoinPassphrase('');
                     }}
                     backgroundColor={theme.colors.surfaceMuted}
                     textColor={theme.colors.textPrimary}
@@ -1017,6 +1399,7 @@ export default function SettingsScreen() {
                   onPress={() => {
                     clearError();
                     setShowJoinForm(true);
+                    setJoinPassphrase('');
                   }}
                   backgroundColor={theme.colors.secondary}
                   textColor={theme.colors.surface}
@@ -1539,6 +1922,111 @@ const styles = StyleSheet.create({
     fontSize: 13,
     lineHeight: 20,
     marginBottom: 12,
+  },
+  sessionSubHint: {
+    fontSize: 12,
+    lineHeight: 18,
+    marginBottom: 16,
+  },
+  securityCard: {
+    borderWidth: 1,
+    borderRadius: 12,
+    padding: 12,
+    marginTop: 12,
+  },
+  securityHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  securityTitle: {
+    fontSize: 15,
+    fontWeight: '600',
+  },
+  securityRefresh: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+  securityRefreshText: {
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  securityBody: {
+    fontSize: 13,
+    lineHeight: 20,
+  },
+  securityBodyMuted: {
+    fontSize: 12,
+    marginTop: 4,
+  },
+  securityValue: {
+    fontWeight: '600',
+  },
+  securityWarning: {
+    fontSize: 12,
+    fontWeight: '600',
+    marginTop: 8,
+  },
+  pendingCard: {
+    borderWidth: 1,
+    borderRadius: 12,
+    padding: 12,
+    marginTop: 12,
+    gap: 12,
+  },
+  pendingHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  pendingTitle: {
+    fontSize: 15,
+    fontWeight: '600',
+  },
+  pendingEmptyText: {
+    fontSize: 13,
+  },
+  pendingRow: {
+    borderWidth: 1,
+    borderRadius: 12,
+    padding: 12,
+    gap: 8,
+  },
+  pendingInfo: {
+    gap: 4,
+  },
+  pendingName: {
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  pendingEmail: {
+    fontSize: 13,
+  },
+  pendingMeta: {
+    fontSize: 12,
+  },
+  pendingActions: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  pendingActionButton: {
+    flex: 1,
+    borderRadius: 10,
+    borderWidth: 1,
+    paddingVertical: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  pendingDenyButton: {
+    backgroundColor: 'transparent',
+  },
+  pendingApproveButton: {
+    borderWidth: 0,
+  },
+  pendingActionText: {
+    fontSize: 14,
+    fontWeight: '600',
   },
   sessionCode: {
     fontSize: 18,

@@ -25,6 +25,7 @@ import { useSession } from '@/providers/SessionProvider';
 import { useInventory } from '@/hooks/useInventory';
 import { useEventStagedInventory } from '@/hooks/useEventStagedInventory';
 import { useEvents } from '@/hooks/useEvents';
+import { supabase } from '@/lib/supabase';
 import type { EventRecord } from '@/types/events';
 import type { EventStagedInventoryItem, InventoryItem } from '@/types/inventory';
 import { buildInventoryCsv, parseInventoryCsv } from '@/utils/inventoryCsv';
@@ -65,6 +66,19 @@ const formatEventRange = (startISO: string, endISO: string) => {
   }
 };
 
+const mapEventRowToRecord = (row: any): EventRecord => ({
+  id: row.id,
+  ownerUserId: row.owner_user_id,
+  name: row.name,
+  startDateISO: row.start_date,
+  endDateISO: row.end_date,
+  location: row.location ?? null,
+  notes: row.notes ?? null,
+  checklist: Array.isArray(row.checklist) ? row.checklist : [],
+  createdAt: row.created_at ?? null,
+  updatedAt: row.updated_at ?? null,
+});
+
 type InventoryListItemProps = {
   item: InventoryItem;
   onPress: (item: InventoryItem) => void;
@@ -102,6 +116,7 @@ export default function InventoryScreen() {
     refresh: refreshStaged,
   } = useEventStagedInventory(ownerUserId);
   const { events: upcomingEvents } = useEvents(ownerUserId);
+  const [stagedEventFallbacks, setStagedEventFallbacks] = useState<Record<string, EventRecord>>({});
 
   useEffect(() => {
     if (!feedback) return;
@@ -151,33 +166,87 @@ export default function InventoryScreen() {
 
   const outOfStockItems = useMemo(() => items.filter((item) => item.quantity <= 0), [items]);
 
+  const stagedEventIds = useMemo(() => Object.keys(stagedByEvent), [stagedByEvent]);
+
+  const missingEventIds = useMemo(() => {
+    if (!stagedEventIds.length) return [] as string[];
+    return stagedEventIds.filter((eventId) => {
+      const known = upcomingEvents.some((event) => event.id === eventId) || Boolean(stagedEventFallbacks[eventId]);
+      return !known;
+    });
+  }, [stagedEventIds, upcomingEvents, stagedEventFallbacks]);
+
+  useEffect(() => {
+    if (!ownerUserId || missingEventIds.length === 0) return;
+
+    let cancelled = false;
+
+    const fetchMissingEvents = async () => {
+      const { data, error } = await supabase
+        .from('events')
+        .select('id, owner_user_id, name, start_date, end_date, location, notes, checklist, created_at, updated_at')
+        .in('id', missingEventIds);
+
+      if (cancelled || error || !data?.length) {
+        if (error) {
+          console.warn('Failed to backfill staged event metadata', error);
+        }
+        return;
+      }
+
+      setStagedEventFallbacks((current) => {
+        const next = { ...current };
+        data.forEach((row: any) => {
+          const mapped = mapEventRowToRecord(row);
+          next[mapped.id] = mapped;
+        });
+        return next;
+      });
+    };
+
+    void fetchMissingEvents();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [ownerUserId, missingEventIds]);
+
   const eventsById = useMemo(() => {
-    return upcomingEvents.reduce<Record<string, EventRecord>>((acc, event) => {
-      acc[event.id] = event;
-      return acc;
-    }, {});
-  }, [upcomingEvents]);
+    const map: Record<string, EventRecord> = {};
+    upcomingEvents.forEach((event) => {
+      map[event.id] = event;
+    });
+    Object.keys(stagedEventFallbacks).forEach((eventId) => {
+      map[eventId] = stagedEventFallbacks[eventId];
+    });
+    return map;
+  }, [upcomingEvents, stagedEventFallbacks]);
 
   const stagedEventEntries = useMemo(() => {
-    return Object.entries(stagedByEvent).map(([eventId, stagedList]) => {
-      const event = eventsById[eventId];
-      const totalQuantity = stagedList.reduce((sum, staged) => sum + (staged.quantity ?? 0), 0);
-      const totalValueCents = stagedList.reduce(
-        (sum, staged) => sum + (staged.priceCents ?? 0) * (staged.quantity ?? 0),
-        0,
-      );
-      return {
-        eventId,
-        event,
-        items: stagedList,
-        totalQuantity,
-        totalValueCents,
-      };
-    }).sort((a, b) => {
-      const aTime = a.event ? new Date(a.event.startDateISO).getTime() : Number.POSITIVE_INFINITY;
-      const bTime = b.event ? new Date(b.event.startDateISO).getTime() : Number.POSITIVE_INFINITY;
-      return aTime - bTime;
-    });
+    const now = Date.now();
+    return Object.entries(stagedByEvent)
+      .map(([eventId, stagedList]) => {
+        const event = eventsById[eventId];
+        const totalQuantity = stagedList.reduce((sum, staged) => sum + (staged.quantity ?? 0), 0);
+        const totalValueCents = stagedList.reduce(
+          (sum, staged) => sum + (staged.priceCents ?? 0) * (staged.quantity ?? 0),
+          0,
+        );
+        const isPastEvent = event ? new Date(event.endDateISO).getTime() < now : false;
+        return {
+          eventId,
+          event,
+          items: stagedList,
+          totalQuantity,
+          totalValueCents,
+          isPastEvent,
+        };
+      })
+      .sort((a, b) => {
+        const aTime = a.event ? new Date(a.event.startDateISO).getTime() : Number.POSITIVE_INFINITY;
+        const bTime = b.event ? new Date(b.event.startDateISO).getTime() : Number.POSITIVE_INFINITY;
+        return aTime - bTime;
+      });
   }, [eventsById, stagedByEvent]);
 
   const totalStagedCount = useMemo(() => {
@@ -674,9 +743,15 @@ export default function InventoryScreen() {
             ) : (
               <View style={{ gap: 12 }}>
                 {stagedEventEntries.map((entry) => {
-                  const { event, totalQuantity, totalValueCents } = entry;
+                  const { event, totalQuantity, totalValueCents, isPastEvent } = entry;
                   const formattedRange = event
                     ? formatEventRange(event.startDateISO, event.endDateISO)
+                    : 'Event removed';
+                  const eventTitle = event ? event.name : 'Event removed';
+                  const subtitle = event
+                    ? isPastEvent
+                      ? `${formattedRange} • Event ended`
+                      : formattedRange
                     : 'Event removed';
                   const itemCount = entry.items.length;
                   return (
@@ -686,10 +761,17 @@ export default function InventoryScreen() {
                     >
                       <View style={styles.stagedEventHeader}>
                         <View style={{ flex: 1 }}>
-                          <Text style={[styles.stagedEventTitle, { color: theme.colors.textPrimary }]}>
-                            {event?.name ?? 'Archived event'}
-                          </Text>
-                          <Text style={{ color: theme.colors.textSecondary }}>{formattedRange}</Text>
+                          <View style={styles.stagedEventTitleRow}>
+                            <Text style={[styles.stagedEventTitle, { color: theme.colors.textPrimary }]} numberOfLines={1}>
+                              {eventTitle}
+                            </Text>
+                            {isPastEvent ? (
+                              <View style={[styles.stagedEventChip, { borderColor: theme.colors.border }]}>
+                                <Text style={[styles.stagedEventChipLabel, { color: theme.colors.textSecondary }]}>Ended</Text>
+                              </View>
+                            ) : null}
+                          </View>
+                          <Text style={{ color: theme.colors.textSecondary }}>{subtitle}</Text>
                         </View>
                         <View style={{ alignItems: 'flex-end' }}>
                           <Text style={{ color: theme.colors.textPrimary, fontWeight: '600' }}>
@@ -1163,9 +1245,27 @@ const styles = StyleSheet.create({
     gap: 8,
     flexWrap: 'wrap',
   },
+  stagedEventTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    flexWrap: 'wrap',
+  },
   stagedEventTitle: {
     fontSize: 16,
     fontWeight: '600',
+  },
+  stagedEventChip: {
+    borderRadius: 999,
+    borderWidth: 1,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+  },
+  stagedEventChipLabel: {
+    fontSize: 11,
+    fontWeight: '600',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
   },
   stagedActionButton: {
     flexDirection: 'row',
