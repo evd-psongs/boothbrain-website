@@ -30,7 +30,12 @@ import type { EventRecord } from '@/types/events';
 import type { EventStagedInventoryItem, InventoryItem } from '@/types/inventory';
 import { buildInventoryCsv, parseInventoryCsv } from '@/utils/inventoryCsv';
 import { createInventoryItem, updateInventoryItem } from '@/lib/inventory';
-import { updateEventStagedInventoryStatus, loadStagedInventoryItems } from '@/lib/eventStagedInventory';
+import {
+  deleteEventStagedInventoryForEvent,
+  updateEventStagedInventoryStatus,
+  loadStagedInventoryItems,
+} from '@/lib/eventStagedInventory';
+import { deleteEventRecord } from '@/lib/events';
 import { formatCurrencyFromCents } from '@/utils/currency';
 import { StagedInventoryModal } from '@/components/StagedInventoryModal';
 import { FREE_PLAN_ITEM_LIMIT } from '@/lib/freePlanLimits';
@@ -115,7 +120,7 @@ export default function InventoryScreen() {
     error: stagedError,
     refresh: refreshStaged,
   } = useEventStagedInventory(ownerUserId);
-  const { events: upcomingEvents } = useEvents(ownerUserId);
+  const { events: upcomingEvents, refresh: refreshEvents } = useEvents(ownerUserId);
   const [stagedEventFallbacks, setStagedEventFallbacks] = useState<Record<string, EventRecord>>({});
 
   useEffect(() => {
@@ -141,8 +146,9 @@ export default function InventoryScreen() {
       if (!ownerUserId) return undefined;
       void refresh();
       void refreshStaged();
+      void refreshEvents();
       return undefined;
-    }, [refresh, refreshStaged, ownerUserId]),
+    }, [refresh, refreshEvents, refreshStaged, ownerUserId]),
   );
 
   const planTier = sharedPlanTier;
@@ -332,6 +338,51 @@ export default function InventoryScreen() {
       stagedByEvent,
       stagedModalEventId,
       ownerUserId,
+    ],
+  );
+
+  const handleRemoveEvent = useCallback(
+    (eventId: string) => {
+      const eventName = eventsById[eventId]?.name;
+      Alert.alert('Remove event', eventName ? `Remove ${eventName}?` : 'Remove this event?', [
+        { text: 'Keep', style: 'cancel' },
+        {
+          text: 'Remove',
+          style: 'destructive',
+          onPress: async () => {
+            if (!ownerUserId) {
+              setFeedback({ type: 'error', message: 'Session owner not available yet.' });
+              return;
+            }
+
+            try {
+              await Promise.all([
+                deleteEventRecord(ownerUserId, eventId),
+                deleteEventStagedInventoryForEvent({ userId: ownerUserId, eventId }),
+              ]);
+              setFeedback({ type: 'success', message: 'Event removed.' });
+              void refreshEvents();
+              void refreshStaged();
+              if (stagedModalEventId === eventId) {
+                handleCloseStagedModal();
+              }
+            } catch (error) {
+              console.error('Failed to remove event', error);
+              setFeedback({ type: 'error', message: 'Unable to remove this event right now.' });
+            }
+          },
+        },
+      ]);
+    },
+    [
+      eventsById,
+      handleCloseStagedModal,
+      ownerUserId,
+      refreshEvents,
+      refreshStaged,
+      setFeedback,
+      stagedModalEventId,
+      deleteEventStagedInventoryForEvent,
     ],
   );
 
@@ -791,8 +842,8 @@ export default function InventoryScreen() {
                             ? `${itemCount} item${itemCount === 1 ? '' : 's'} staged`
                             : 'No staged inventory yet.'}
                         </Text>
-                        {itemCount ? (
-                          <View style={styles.stagedEventSummaryActions}>
+                        <View style={styles.stagedEventSummaryActions}>
+                          {itemCount ? (
                             <Pressable
                               onPress={() => handleLoadAllForEvent(entry.eventId)}
                               style={({ pressed }) => [
@@ -808,23 +859,39 @@ export default function InventoryScreen() {
                               <Feather name="log-in" size={14} color={theme.colors.primary} />
                               <Text style={[styles.stagedActionLabel, { color: theme.colors.primary }]}>Load all</Text>
                             </Pressable>
-                            <Pressable
-                              onPress={() => setStagedModalEventId(entry.eventId)}
-                              style={({ pressed }) => [
-                                styles.stagedActionButton,
-                                {
-                                  borderColor: theme.colors.textSecondary,
-                                  backgroundColor: pressed
-                                    ? 'rgba(139, 149, 174, 0.16)'
-                                    : 'rgba(139, 149, 174, 0.12)',
-                                },
-                              ]}
-                            >
-                              <Feather name="list" size={14} color={theme.colors.textSecondary} />
-                              <Text style={[styles.stagedActionLabel, { color: theme.colors.textSecondary }]}>Manage</Text>
-                            </Pressable>
-                          </View>
-                        ) : null}
+                          ) : null}
+                          <Pressable
+                            onPress={() => setStagedModalEventId(entry.eventId)}
+                            style={({ pressed }) => [
+                              styles.stagedActionButton,
+                              {
+                                borderColor: theme.colors.textSecondary,
+                                backgroundColor: pressed
+                                  ? 'rgba(139, 149, 174, 0.16)'
+                                  : 'rgba(139, 149, 174, 0.12)',
+                                opacity: itemCount ? 1 : 0.7,
+                              },
+                            ]}
+                          >
+                            <Feather name="list" size={14} color={theme.colors.textSecondary} />
+                            <Text style={[styles.stagedActionLabel, { color: theme.colors.textSecondary }]}>Manage</Text>
+                          </Pressable>
+                          <Pressable
+                            onPress={() => handleRemoveEvent(entry.eventId)}
+                            style={({ pressed }) => [
+                              styles.stagedActionButton,
+                              {
+                                borderColor: theme.colors.error,
+                                backgroundColor: pressed
+                                  ? 'rgba(243, 105, 110, 0.16)'
+                                  : 'rgba(243, 105, 110, 0.12)',
+                              },
+                            ]}
+                          >
+                            <Feather name="trash-2" size={14} color={theme.colors.error} />
+                            <Text style={[styles.stagedActionLabel, { color: theme.colors.error }]}>Delete</Text>
+                          </Pressable>
+                        </View>
                       </View>
                     </View>
                   );

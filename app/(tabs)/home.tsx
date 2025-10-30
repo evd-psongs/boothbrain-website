@@ -13,7 +13,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
+import { useFocusEffect, useRouter } from 'expo-router';
 import { useTheme } from '@/providers/ThemeProvider';
 import { useSupabaseAuth } from '@/providers/SupabaseAuthProvider';
 import { useSession } from '@/providers/SessionProvider';
@@ -22,7 +22,7 @@ import { useEvents } from '@/hooks/useEvents';
 import type { EventChecklistItem, EventRecord } from '@/types/events';
 import { useInventory } from '@/hooks/useInventory';
 import { useEventStagedInventory } from '@/hooks/useEventStagedInventory';
-import { deleteEventStagedInventoryItem, loadStagedInventoryItems } from '@/lib/eventStagedInventory';
+import { deleteEventStagedInventoryForEvent, deleteEventStagedInventoryItem } from '@/lib/eventStagedInventory';
 import { removeItemImage } from '@/lib/itemImages';
 import { createEvent, updateEventRecord, deleteEventRecord } from '@/lib/events';
 import { StagedInventoryModal } from '@/components/StagedInventoryModal';
@@ -197,6 +197,15 @@ export default function HomeScreen() {
     void refreshEvents();
     void refreshStaged();
   }, [refreshEvents, refreshInventory, refreshOrders, refreshStaged]);
+
+  useFocusEffect(
+    useCallback(() => {
+      if (!ownerUserId) return undefined;
+      void refreshEvents();
+      void refreshStaged();
+      return undefined;
+    }, [ownerUserId, refreshEvents, refreshStaged]),
+  );
 
   const openDatePicker = useCallback(
     (type: 'start' | 'end') => {
@@ -456,7 +465,8 @@ export default function HomeScreen() {
 
   const handleRemoveEvent = useCallback(
     (eventId: string) => {
-      Alert.alert('Remove event', 'Remove this upcoming event?', [
+      const targetEvent = events.find((event) => event.id === eventId);
+      Alert.alert('Remove event', targetEvent ? `Remove ${targetEvent.name}?` : 'Remove this upcoming event?', [
         { text: 'Keep', style: 'cancel' },
         {
           text: 'Remove',
@@ -465,19 +475,44 @@ export default function HomeScreen() {
             if (editingEventId === eventId) {
               handleCloseEventModal();
             }
+            if (stagedModalEventId === eventId) {
+              handleCloseStagedModal();
+            }
             if (!ownerUserId) {
               Alert.alert('Remove event', 'Session owner not available yet.');
               return;
             }
-            void deleteEventRecord(ownerUserId, eventId).catch((error) => {
-              console.error('Failed to remove event', error);
-              Alert.alert('Remove event', 'Unable to remove this event right now.');
-            });
+            const previousEvents = events;
+            setEvents((current) => current.filter((event) => event.id !== eventId));
+            void Promise.all([
+              deleteEventRecord(ownerUserId, eventId),
+              deleteEventStagedInventoryForEvent({ userId: ownerUserId, eventId }),
+            ])
+              .then(() => {
+                void refreshEvents();
+                void refreshStaged();
+              })
+              .catch((error) => {
+                console.error('Failed to remove event', error);
+                setEvents(previousEvents);
+                Alert.alert('Remove event', 'Unable to remove this event right now.');
+              });
           },
         },
       ]);
     },
-    [editingEventId, handleCloseEventModal, ownerUserId],
+    [
+      editingEventId,
+      events,
+      handleCloseEventModal,
+      handleCloseStagedModal,
+      ownerUserId,
+      refreshEvents,
+      refreshStaged,
+      setEvents,
+      stagedModalEventId,
+      deleteEventStagedInventoryForEvent,
+    ],
   );
 
   const combinedLoading = loadingOrders || loadingInventory || loadingEvents || loadingStaged;
@@ -515,63 +550,6 @@ export default function HomeScreen() {
     if (!stagedModalEvent) return null;
     return formatEventRange(stagedModalEvent.startDateISO, stagedModalEvent.endDateISO);
   }, [stagedModalEvent]);
-
-  const handleLoadAllForEvent = useCallback(
-    (eventId: string) => {
-      if (!userId || !ownerUserId) {
-        Alert.alert('Sign in required', 'Sign in to load staged inventory.');
-        return;
-      }
-      const itemsForEvent = stagedByEvent[eventId] ?? [];
-      if (!itemsForEvent.length) {
-        Alert.alert('No staged inventory', 'Stage items for this event before loading.');
-        return;
-      }
-
-      const eventName = events.find((event) => event.id === eventId)?.name ?? 'this event';
-      Alert.alert(
-        'Load staged inventory?',
-        `Load ${itemsForEvent.length} staged item${itemsForEvent.length === 1 ? '' : 's'} for ${eventName}?`,
-        [
-          { text: 'Cancel', style: 'cancel' },
-          {
-            text: 'Load',
-            style: 'default',
-            onPress: async () => {
-              try {
-                await loadStagedInventoryItems({ userId: ownerUserId, eventId, items: itemsForEvent });
-                if (stagedModalEventId === eventId) {
-                  handleCloseStagedModal();
-                }
-                void refreshInventory();
-                void refreshStaged();
-                Alert.alert('Inventory loaded', `Loaded ${itemsForEvent.length} item${itemsForEvent.length === 1 ? '' : 's'} into inventory.`);
-              } catch (error) {
-                console.error('Failed to load staged inventory', error);
-                Alert.alert('Load failed', 'Unable to load staged inventory right now.');
-              }
-            },
-          },
-        ],
-      );
-    },
-    [
-      events,
-      handleCloseStagedModal,
-      loadStagedInventoryItems,
-      refreshInventory,
-      refreshStaged,
-      stagedByEvent,
-      stagedModalEventId,
-      userId,
-      ownerUserId,
-    ],
-  );
-
-  const handleModalLoadAll = useCallback(() => {
-    if (!stagedModalEventId) return;
-    handleLoadAllForEvent(stagedModalEventId);
-  }, [handleLoadAllForEvent, stagedModalEventId]);
 
   const handleModalEdit = useCallback(
     (stagedId: string) => {
@@ -718,26 +696,25 @@ export default function HomeScreen() {
                                 : 'Stage items ahead of time to prep for this event.'}
                             </Text>
                           </View>
-                          {stagedItemCount ? (
-                            <View style={styles.stagedSummaryActions}>
-                              <Pressable
-                                onPress={() => setStagedModalEventId(event.id)}
-                                style={({ pressed }) => [
-                                  styles.stagedViewButton,
-                                  {
-                                    borderColor: theme.colors.textSecondary,
-                                    backgroundColor: pressed
-                                      ? 'rgba(139, 149, 174, 0.18)'
-                                      : 'rgba(139, 149, 174, 0.12)',
-                                  },
-                                ]}
-                                hitSlop={6}
-                              >
-                                <Feather name="list" size={14} color={theme.colors.textSecondary} />
-                                <Text style={[styles.stagedViewText, { color: theme.colors.textSecondary }]}>Manage</Text>
-                              </Pressable>
-                            </View>
-                          ) : null}
+                          <View style={styles.stagedSummaryActions}>
+                            <Pressable
+                              onPress={() => setStagedModalEventId(event.id)}
+                              style={({ pressed }) => [
+                                styles.stagedViewButton,
+                                {
+                                  borderColor: theme.colors.textSecondary,
+                                  backgroundColor: pressed
+                                    ? 'rgba(139, 149, 174, 0.18)'
+                                    : 'rgba(139, 149, 174, 0.12)',
+                                  opacity: stagedItemCount ? 1 : 0.7,
+                                },
+                              ]}
+                              hitSlop={6}
+                            >
+                              <Feather name="list" size={14} color={theme.colors.textSecondary} />
+                              <Text style={[styles.stagedViewText, { color: theme.colors.textSecondary }]}>Manage</Text>
+                            </Pressable>
+                          </View>
                         </View>
 
                         {stagedItemCount ? (
@@ -1354,7 +1331,6 @@ export default function HomeScreen() {
         items={stagedModalItems}
         loading={loadingStaged}
         emptyMessage="No staged inventory yet. Use “Stage inventory” to add items ahead of time."
-        onLoadAll={stagedModalEventId ? handleModalLoadAll : undefined}
         onEdit={stagedModalEventId ? handleModalEdit : undefined}
         onRemove={stagedModalEventId ? handleModalRemove : undefined}
       />
