@@ -248,6 +248,24 @@ export async function deleteEventStagedInventoryItem({
   }
 }
 
+export async function deleteEventStagedInventoryForEvent({
+  userId,
+  eventId,
+}: {
+  userId: string;
+  eventId: string;
+}): Promise<void> {
+  const { error } = await supabase
+    .from('event_staged_inventory')
+    .delete()
+    .eq('owner_user_id', userId)
+    .eq('event_id', eventId);
+
+  if (error) {
+    throw error;
+  }
+}
+
 export async function loadStagedInventoryItems({
   userId,
   eventId,

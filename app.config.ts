@@ -17,6 +17,9 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
   ios: {
     supportsTablet: true,
     bundleIdentifier: 'com.boothbrain.app',
+    infoPlist: {
+      ITSAppUsesNonExemptEncryption: false,
+    },
   },
   android: {
     adaptiveIcon: {
@@ -38,7 +41,14 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     'expo-secure-store',
     'expo-document-picker',
     'expo-camera',
-    'sentry-expo',
+    [
+      'expo-build-properties',
+      {
+        ios: {
+          privacyManifestAggregationEnabled: false,
+        },
+      },
+    ],
   ],
   experiments: {
     typedRoutes: true,
@@ -52,7 +62,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     sentryDsn: process.env.EXPO_PUBLIC_SENTRY_DSN,
     environment: process.env.EXPO_PUBLIC_ENVIRONMENT ?? 'production',
     eas: {
-      projectId: '9e8924e1-5394-4cc3-86dc-499d23ebe789',
+      projectId: 'f0113217-0f08-470d-aa1b-3f8870ef9198',
     },
   },
 });
