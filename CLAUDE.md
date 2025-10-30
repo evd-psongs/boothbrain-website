@@ -3,6 +3,21 @@
 ## Project Overview
 BoothBrain is an Expo React Native app for managing vendor booth inventory and sales.
 
+## Last Session (2024-10-30)
+- ✅ Set up Firebase Crashlytics for error monitoring
+- ✅ Extracted common UI components (PrimaryButton, SecondaryButton, InputField, etc.)
+- ✅ Created date utilities (`/src/utils/dates.ts`) - eliminated duplicate code
+- ✅ Created payment utilities (`/src/utils/payment.ts`)
+- ✅ Extracted SessionManagementSection component (322 lines, ready but not integrated)
+- ✅ Reduced ~290 lines of code overall
+- ✅ Updated CLAUDE.md documentation
+
+## Current Focus
+- 🎯 **Priority:** Complete SessionManagementSection integration in settings.tsx
+- 🎯 **Goal:** Reduce settings.tsx from 1,971 lines to under 500 lines
+- 🔄 Extract remaining sections: ProfileSection, PasswordSection, PaymentSettingsSection
+- 🔄 Then tackle sale.tsx modal extractions (CheckoutModal, QuantityModal)
+
 ## Refactoring Impact Summary
 - **Total lines removed:** ~290 lines
 - **Duplicate code eliminated:** Yes (formatEventRange, formatPaymentLabel)
@@ -141,9 +156,19 @@ export function ProfileSection() {
 7. Extract async helpers (withTimeout, withRetry) from SupabaseAuthProvider
 8. Add proper TypeScript types for all API responses
 
+## Important Reminders & Don'ts
+- ⚠️ **SessionManagementSection is created but NOT integrated yet** - don't recreate it
+- ⚠️ **Firebase config files are in root** (google-services.json, GoogleService-Info.plist) - already set up
+- ⚠️ **Don't use Expo Go for Firebase testing** - requires development build
+- ⚠️ **formatEventRange() was duplicated** - now centralized in dates.ts
+- ⚠️ **formatPaymentLabel() was duplicated** - now centralized in payment.ts
+
 ## Notes for Claude
+- 📖 **Always read this file first** at the start of each session
 - Prioritize code readability over cleverness
 - Extract components when files exceed 300 lines
-- Always update this file after refactoring
+- Always update this file after refactoring (especially Last Session and Current Focus)
 - Use custom hooks for business logic
 - Keep components focused on rendering
+- Run `wc -l filename` to check file sizes before/after refactoring
+- Commit frequently with descriptive messages
