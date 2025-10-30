@@ -3,8 +3,10 @@ import {
   ActivityIndicator,
   FlatList,
   Image,
+  KeyboardAvoidingView,
   Linking,
   Modal,
+  Platform,
   Pressable,
   ScrollView,
   Share,
@@ -1108,8 +1110,12 @@ function CheckoutModal({
 
   return (
     <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
-      <SafeAreaView style={[styles.checkoutContainer, { backgroundColor: themeColors.background }]}>
-        <View style={styles.checkoutHeader}>
+      <KeyboardAvoidingView
+        style={{ flex: 1 }}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      >
+        <SafeAreaView style={[styles.checkoutContainer, { backgroundColor: themeColors.background }]}>
+          <View style={styles.checkoutHeader}>
           <Text style={[styles.checkoutTitle, { color: themeColors.textPrimary }]}>Cart</Text>
           <Pressable onPress={onClose} hitSlop={12}>
             <Feather name="x" size={20} color={themeColors.textSecondary} />
@@ -1284,6 +1290,7 @@ function CheckoutModal({
         </ScrollView>
 
       </SafeAreaView>
+      </KeyboardAvoidingView>
     </Modal>
   );
 }
@@ -1385,7 +1392,10 @@ function QuantityModal({
 }) {
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
-      <View style={styles.modalOverlay}>
+      <KeyboardAvoidingView
+        style={styles.modalOverlay}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      >
         <View style={[styles.quantityCard, { backgroundColor: themeColors.surface }]}>
           <Text style={[styles.modalTitle, { color: themeColors.textPrimary }]}>
             {item ? `Adjust ${item.name}` : 'Adjust quantity'}
@@ -1426,7 +1436,7 @@ function QuantityModal({
             </Pressable>
           </View>
         </View>
-      </View>
+      </KeyboardAvoidingView>
     </Modal>
   );
 }
