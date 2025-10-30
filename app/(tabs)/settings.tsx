@@ -1,24 +1,28 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  Animated,
-  ActivityIndicator,
   Alert,
   Image,
   Linking,
   Pressable,
   ScrollView,
   Share,
-  StyleProp,
   StyleSheet,
   Text,
-  TextInput,
   View,
-  ViewStyle,
 } from 'react-native';
-import type { KeyboardTypeOptions, TextInputProps } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
+import * as ImagePicker from 'expo-image-picker';
 
+import {
+  PrimaryButton,
+  SecondaryButton,
+  InputField,
+  SectionHeading,
+  FeedbackBanner,
+  type FeedbackState,
+  type InputFieldProps,
+} from '@/components/common';
 import { useSubscriptionPlans } from '@/hooks/useSubscriptionPlans';
 import { startCheckoutSession, openBillingPortal } from '@/lib/billing';
 import { updateProfile } from '@/lib/profile';
@@ -32,12 +36,7 @@ import { formatCurrencyFromCents } from '@/utils/currency';
 import type { SubscriptionPlan } from '@/types/auth';
 import { enforceFreePlanLimits, FREE_PLAN_ITEM_LIMIT } from '@/lib/freePlanLimits';
 import { PAUSE_ALREADY_USED_MESSAGE } from '@/utils/pauseErrors';
-import * as ImagePicker from 'expo-image-picker';
 
-type FeedbackState = {
-  type: 'success' | 'error';
-  message: string;
-} | null;
 
 type PaymentField = 'squareLink' | 'venmoUsername' | 'cashAppTag' | 'paypalQrUri';
 
@@ -176,208 +175,6 @@ function formatPlanPrice(plan: SubscriptionPlan): string {
   }
 
   return `${amount} / month`;
-}
-
-type InputFieldProps = {
-  label: string;
-  value: string;
-  onChange: (text: string) => void;
-  placeholder: string;
-  placeholderColor: string;
-  borderColor: string;
-  backgroundColor: string;
-  textColor: string;
-  keyboardType?: KeyboardTypeOptions;
-  secureTextEntry?: boolean;
-  textContentType?: TextInputProps['textContentType'];
-  autoCapitalize?: TextInputProps['autoCapitalize'];
-};
-
-function InputField({
-  label,
-  value,
-  onChange,
-  placeholder,
-  placeholderColor,
-  borderColor,
-  backgroundColor,
-  textColor,
-  keyboardType,
-  secureTextEntry,
-  textContentType,
-  autoCapitalize,
-}: InputFieldProps) {
-  return (
-    <View style={styles.inputGroup}>
-      <Text style={[styles.inputLabel, { color: placeholderColor }]}>{label}</Text>
-      <TextInput
-        value={value}
-        onChangeText={onChange}
-        placeholder={placeholder}
-        placeholderTextColor={placeholderColor}
-        style={[styles.input, { borderColor, backgroundColor, color: textColor }]}
-        keyboardType={keyboardType}
-        secureTextEntry={secureTextEntry}
-        textContentType={textContentType}
-        autoCapitalize={autoCapitalize}
-      />
-    </View>
-  );
-}
-
-function FeedbackBanner({
-  feedback,
-  successColor,
-  errorColor,
-}: {
-  feedback: FeedbackState;
-  successColor: string;
-  errorColor: string;
-}) {
-  const [currentFeedback, setCurrentFeedback] = useState<FeedbackState>(null);
-  const opacity = useRef(new Animated.Value(0)).current;
-  const translateY = useRef(new Animated.Value(-16)).current;
-
-  useEffect(() => {
-    if (feedback && currentFeedback !== feedback) {
-      setCurrentFeedback(feedback);
-      opacity.stopAnimation();
-      translateY.stopAnimation();
-      opacity.setValue(0);
-      translateY.setValue(-16);
-      Animated.parallel([
-        Animated.timing(opacity, {
-          toValue: 1,
-          duration: 220,
-          useNativeDriver: true,
-        }),
-        Animated.spring(translateY, {
-          toValue: 0,
-          damping: 18,
-          mass: 0.8,
-          stiffness: 220,
-          useNativeDriver: true,
-        }),
-      ]).start();
-    } else if (!feedback && currentFeedback) {
-      Animated.parallel([
-        Animated.timing(opacity, {
-          toValue: 0,
-          duration: 200,
-          useNativeDriver: true,
-        }),
-        Animated.timing(translateY, {
-          toValue: -10,
-          duration: 200,
-          useNativeDriver: true,
-        }),
-      ]).start(() => {
-        setCurrentFeedback(null);
-        translateY.setValue(-16);
-      });
-    }
-  }, [feedback, currentFeedback, opacity, translateY]);
-
-  if (!currentFeedback) return null;
-  const isSuccess = currentFeedback.type === 'success';
-  const palette = isSuccess ? successColor : errorColor;
-
-  return (
-    <Animated.View
-      pointerEvents="none"
-      style={[
-        styles.feedbackToast,
-        { backgroundColor: palette, borderColor: palette },
-        { opacity, transform: [{ translateY }] },
-      ]}
-    >
-      <Text style={[styles.feedbackText, { color: '#fff' }]}>{currentFeedback.message}</Text>
-    </Animated.View>
-  );
-}
-
-function SectionHeading({ title, subtitle, titleColor, subtitleColor }: {
-  title: string;
-  subtitle: string;
-  titleColor: string;
-  subtitleColor: string;
-}) {
-  return (
-    <View>
-      <Text style={[styles.cardTitle, { color: titleColor }]}>{title}</Text>
-      <Text style={[styles.cardSubtitle, { color: subtitleColor }]}>{subtitle}</Text>
-    </View>
-  );
-}
-
-function PrimaryButton({
-  title,
-  onPress,
-  disabled,
-  loading,
-  backgroundColor,
-  textColor,
-}: {
-  title: string;
-  onPress: () => void;
-  disabled?: boolean;
-  loading?: boolean;
-  backgroundColor: string;
-  textColor: string;
-}) {
-  return (
-    <Pressable
-      disabled={disabled}
-      onPress={onPress}
-      style={({ pressed }) => [
-        styles.primaryButton,
-        {
-          backgroundColor,
-          opacity: disabled ? 0.5 : pressed ? 0.85 : 1,
-        },
-      ]}
-    >
-      {loading ? <ActivityIndicator color={textColor} /> : <Text style={[styles.primaryButtonText, { color: textColor }]}>{title}</Text>}
-    </Pressable>
-  );
-}
-
-function SecondaryButton({
-  title,
-  onPress,
-  disabled,
-  loading,
-  backgroundColor,
-  borderColor,
-  textColor,
-  style,
-}: {
-  title: string;
-  onPress: () => void;
-  disabled?: boolean;
-  loading?: boolean;
-  backgroundColor: string;
-  borderColor: string;
-  textColor: string;
-  style?: StyleProp<ViewStyle>;
-}) {
-  return (
-    <Pressable
-      disabled={disabled}
-      onPress={onPress}
-      style={({ pressed }) => [
-        styles.secondaryButton,
-        style,
-        {
-          backgroundColor,
-          borderColor,
-          opacity: disabled ? 0.5 : pressed ? 0.85 : 1,
-        },
-      ]}
-    >
-      {loading ? <ActivityIndicator color={textColor} /> : <Text style={[styles.secondaryButtonText, { color: textColor }]}>{title}</Text>}
-    </Pressable>
-  );
 }
 
 export default function SettingsScreen() {
