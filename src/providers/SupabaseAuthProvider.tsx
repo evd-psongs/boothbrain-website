@@ -38,11 +38,11 @@ async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, timeoutMes
 }
 
 async function fetchProfile(userId: string): Promise<Profile | null> {
-  const { data, error } = await supabase
-    .from('profiles')
-    .select('*')
-    .eq('id', userId)
-    .single();
+  const { data, error } = await withTimeout(
+    supabase.from('profiles').select('*').eq('id', userId).single(),
+    10000,
+    'Timed out while loading profile.',
+  );
 
   if (error) {
     if (error.code === 'PGRST116') {
@@ -84,13 +84,17 @@ async function fetchSubscription(userId: string): Promise<Subscription | null> {
     )
   `;
 
-  const { data, error } = await supabase
-    .from('subscriptions')
-    .select(columns)
-    .eq('user_id', userId)
-    .order('created_at', { ascending: false })
-    .limit(1)
-    .maybeSingle();
+  const { data, error } = await withTimeout(
+    supabase
+      .from('subscriptions')
+      .select(columns)
+      .eq('user_id', userId)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle(),
+    10000,
+    'Timed out while loading subscription.',
+  );
 
   if (error) {
     if (error.message?.includes('column subscriptions.user_id')) {
@@ -161,7 +165,11 @@ export function SupabaseAuthProvider({ children }: { children: React.ReactNode }
         const {
           data: { session: initialSession },
           error: sessionError,
-        } = await supabase.auth.getSession();
+        } = await withTimeout(
+          supabase.auth.getSession(),
+          10000,
+          'Timed out while checking the current session.',
+        );
 
         if (sessionError) {
           throw sessionError;
