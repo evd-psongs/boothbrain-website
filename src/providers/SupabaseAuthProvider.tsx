@@ -1,9 +1,12 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { Session, User } from '@supabase/supabase-js';
+import { Platform } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import { supabase } from '@/lib/supabase';
 import type { AuthUser, Profile, SignInData, SignUpData, Subscription } from '@/types/auth';
 import { isPauseAllowanceUsed } from '@/utils/subscriptionPause';
+import { checkNetworkConnectivity } from '@/utils/networkCheck';
 
 type AuthContextValue = {
   user: AuthUser | null;
@@ -21,6 +24,24 @@ type AuthContextValue = {
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 
+const isIOS = Platform.OS === 'ios';
+const isDevelopment = __DEV__;
+
+// Use shorter timeouts on iOS to prevent infinite loading
+const getTimeout = (type: 'session' | 'profile' | 'subscription') => {
+  if (isIOS && isDevelopment) {
+    // Shorter timeouts for iOS in development
+    switch (type) {
+      case 'session': return 3000; // 3s for initial session check
+      case 'profile': return 5000; // 5s for profile
+      case 'subscription': return 5000; // 5s for subscription
+      default: return 5000;
+    }
+  }
+  // Regular timeouts for other platforms
+  return 10000;
+};
+
 async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, timeoutMessage: string): Promise<T> {
   let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
   try {
@@ -37,31 +58,71 @@ async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, timeoutMes
   }
 }
 
-async function fetchProfile(userId: string): Promise<Profile | null> {
-  const { data, error } = await supabase
-    .from('profiles')
-    .select('*')
-    .eq('id', userId)
-    .single();
+async function withRetry<T>(
+  fn: () => Promise<T>,
+  maxRetries = 2,
+  initialDelay = 500
+): Promise<T> {
+  let lastError: any;
 
-  if (error) {
-    if (error.code === 'PGRST116') {
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      return await fn();
+    } catch (error: any) {
+      lastError = error;
+
+      // Don't retry on timeout errors or if we're on the last attempt
+      if (error.message?.includes('Timed out') || attempt === maxRetries) {
+        throw error;
+      }
+
+      // Exponential backoff
+      const delay = initialDelay * Math.pow(2, attempt);
+      await new Promise(resolve => setTimeout(resolve, delay));
+    }
+  }
+
+  throw lastError;
+}
+
+async function fetchProfile(userId: string): Promise<Profile | null> {
+  try {
+    const fetchFn = () => withTimeout(
+      supabase.from('profiles').select('*').eq('id', userId).single(),
+      getTimeout('profile'),
+      'Timed out while loading profile.',
+    );
+
+    const { data, error } = isIOS && isDevelopment
+      ? await fetchFn()  // No retry on iOS in dev for faster failure
+      : await withRetry(fetchFn);
+
+    if (error) {
+      if (error.code === 'PGRST116') {
+        return null;
+      }
+      throw error;
+    }
+
+    return {
+      id: data.id,
+      email: data.email,
+      fullName: data.full_name ?? null,
+      avatarUrl: data.avatar_url ?? null,
+      phone: data.phone ?? null,
+      createdAt: data.created_at,
+      updatedAt: data.updated_at,
+      onboardingCompleted: Boolean(data.onboarding_completed),
+      lastSeenAt: data.last_seen_at ?? null,
+    };
+  } catch (error: any) {
+    // On iOS timeout, return null instead of throwing to allow app to load
+    if (isIOS && error.message?.includes('Timed out')) {
+      console.warn('Profile fetch timed out on iOS, continuing with null profile');
       return null;
     }
     throw error;
   }
-
-  return {
-    id: data.id,
-    email: data.email,
-    fullName: data.full_name ?? null,
-    avatarUrl: data.avatar_url ?? null,
-    phone: data.phone ?? null,
-    createdAt: data.created_at,
-    updatedAt: data.updated_at,
-    onboardingCompleted: Boolean(data.onboarding_completed),
-    lastSeenAt: data.last_seen_at ?? null,
-  };
 }
 
 async function fetchSubscription(userId: string): Promise<Subscription | null> {
@@ -84,54 +145,71 @@ async function fetchSubscription(userId: string): Promise<Subscription | null> {
     )
   `;
 
-  const { data, error } = await supabase
-    .from('subscriptions')
-    .select(columns)
-    .eq('user_id', userId)
-    .order('created_at', { ascending: false })
-    .limit(1)
-    .maybeSingle();
+  try {
+    const fetchFn = () => withTimeout(
+      supabase
+        .from('subscriptions')
+        .select(columns)
+        .eq('user_id', userId)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle(),
+      getTimeout('subscription'),
+      'Timed out while loading subscription.',
+    );
 
-  if (error) {
-    if (error.message?.includes('column subscriptions.user_id')) {
-      console.warn('Skipping subscription lookup (missing user_id column).');
+    const { data, error } = isIOS && isDevelopment
+      ? await fetchFn()  // No retry on iOS in dev for faster failure
+      : await withRetry(fetchFn);
+
+    if (error) {
+      if (error.message?.includes('column subscriptions.user_id')) {
+        console.warn('Skipping subscription lookup (missing user_id column).');
+        return null;
+      }
+      throw error;
+    }
+
+    if (!data) return null;
+
+    const raw = data as any;
+    const planRow = Array.isArray(raw?.plans) ? raw.plans[0] : raw.plans;
+    const pauseUsedPeriodStart: string | null = raw.pause_used_period_start ?? null;
+    const currentPeriodStart: string | null = raw.current_period_start ?? null;
+
+    const pauseAllowanceUsed = isPauseAllowanceUsed(currentPeriodStart, pauseUsedPeriodStart);
+
+    return {
+      id: raw.id,
+      userId,
+      status: raw.status,
+      currentPeriodStart,
+      currentPeriodEnd: raw.current_period_end,
+      canceledAt: raw.canceled_at,
+      trialEndsAt: raw.trial_ends_at,
+      pausedAt: raw.paused_at,
+      pauseUsedPeriodStart,
+      pauseAllowanceUsed,
+      plan: planRow
+        ? {
+            id: planRow.id as string,
+            name: planRow.name as string,
+            tier: planRow.tier as 'free' | 'pro' | 'enterprise',
+            maxInventoryItems: (planRow.max_inventory_items ?? null) as number | null,
+            currency: 'USD',
+            priceCents: (planRow.tier === 'pro' ? 2700 : planRow.price_cents ?? null) as number | null,
+            billingIntervalMonths: planRow.tier === 'pro' ? 3 : null,
+          }
+        : null,
+    };
+  } catch (error: any) {
+    // On iOS timeout, return null instead of throwing to allow app to load
+    if (isIOS && error.message?.includes('Timed out')) {
+      console.warn('Subscription fetch timed out on iOS, continuing with null subscription');
       return null;
     }
     throw error;
   }
-
-  if (!data) return null;
-
-  const raw = data as any;
-  const planRow = Array.isArray(raw?.plans) ? raw.plans[0] : raw.plans;
-  const pauseUsedPeriodStart: string | null = raw.pause_used_period_start ?? null;
-  const currentPeriodStart: string | null = raw.current_period_start ?? null;
-
-  const pauseAllowanceUsed = isPauseAllowanceUsed(currentPeriodStart, pauseUsedPeriodStart);
-
-  return {
-    id: raw.id,
-    userId,
-    status: raw.status,
-    currentPeriodStart,
-    currentPeriodEnd: raw.current_period_end,
-    canceledAt: raw.canceled_at,
-    trialEndsAt: raw.trial_ends_at,
-    pausedAt: raw.paused_at,
-    pauseUsedPeriodStart,
-    pauseAllowanceUsed,
-    plan: planRow
-      ? {
-          id: planRow.id as string,
-          name: planRow.name as string,
-          tier: planRow.tier as 'free' | 'pro' | 'enterprise',
-          maxInventoryItems: (planRow.max_inventory_items ?? null) as number | null,
-          currency: 'USD',
-          priceCents: (planRow.tier === 'pro' ? 2700 : planRow.price_cents ?? null) as number | null,
-          billingIntervalMonths: planRow.tier === 'pro' ? 3 : null,
-        }
-      : null,
-  };
 }
 
 async function buildAuthUser(supabaseUser: User): Promise<AuthUser> {
@@ -158,10 +236,65 @@ export function SupabaseAuthProvider({ children }: { children: React.ReactNode }
   useEffect(() => {
     const init = async () => {
       try {
+        // On iOS, check network connectivity first to avoid hanging
+        if (isIOS && isDevelopment) {
+          const isConnected = await checkNetworkConnectivity();
+          if (!isConnected) {
+            console.warn('Network not reachable on iOS, skipping auth initialization');
+            setLoading(false);
+            initializingRef.current = false;
+            return;
+          }
+        }
+
+        // On iOS, try to get cached session first for faster startup
+        if (isIOS && isDevelopment) {
+          // Check if we have a cached session without waiting for network
+          const cachedSessionStr = await AsyncStorage.getItem('sb-auth-token').catch(() => null);
+          if (cachedSessionStr) {
+            try {
+              const cachedSession = JSON.parse(cachedSessionStr);
+              if (cachedSession?.currentSession) {
+                // Set cached session immediately for fast UI response
+                setSession(cachedSession.currentSession);
+                setLoading(false);
+
+                // Then verify session in background
+                supabase.auth.getSession().then(({ data: { session } }) => {
+                  if (session) {
+                    setSession(session);
+                    return buildAuthUser(session.user);
+                  } else {
+                    // Clear invalid cached session
+                    setSession(null);
+                    setUser(null);
+                  }
+                }).then(authUser => {
+                  if (authUser) setUser(authUser);
+                }).catch(err => {
+                  console.warn('Background session refresh failed:', err);
+                });
+
+                initializingRef.current = false;
+                return; // Exit early with cached session
+              }
+            } catch {}
+          }
+        }
+
+        // Normal flow for non-iOS or no cached session
+        const sessionFetchFn = () => withTimeout(
+          supabase.auth.getSession(),
+          getTimeout('session'),
+          'Timed out while checking the current session.',
+        );
+
         const {
           data: { session: initialSession },
           error: sessionError,
-        } = await supabase.auth.getSession();
+        } = isIOS && isDevelopment
+          ? await sessionFetchFn()  // No retry on iOS for faster failure
+          : await withRetry(sessionFetchFn);
 
         if (sessionError) {
           throw sessionError;
@@ -175,7 +308,14 @@ export function SupabaseAuthProvider({ children }: { children: React.ReactNode }
         }
       } catch (err: any) {
         console.error('Failed to initialize auth session', err);
-        setError(err?.message ?? 'Failed to load session');
+
+        // On iOS timeout, don't show error - just let the user try to login
+        if (isIOS && err?.message?.includes('Timed out')) {
+          console.warn('Session check timed out on iOS, proceeding without session');
+          setError(null); // Don't show timeout error on iOS
+        } else {
+          setError(err?.message ?? 'Failed to load session');
+        }
       } finally {
         setLoading(false);
         initializingRef.current = false;
@@ -327,14 +467,19 @@ export function SupabaseAuthProvider({ children }: { children: React.ReactNode }
     setError(null);
     setLoading(true);
     try {
+      const getSessionFn = () => withTimeout(
+        supabase.auth.getSession(),
+        getTimeout('session'),
+        'Timed out while checking the current session.',
+      );
+
       const {
         data: getData,
         error: getError,
-      } = await withTimeout(
-        supabase.auth.getSession(),
-        10000,
-        'Timed out while checking the current session.',
-      );
+      } = isIOS && isDevelopment
+        ? await getSessionFn()
+        : await withRetry(getSessionFn);
+
       if (getError) {
         throw getError;
       }
@@ -342,14 +487,19 @@ export function SupabaseAuthProvider({ children }: { children: React.ReactNode }
       let nextSession = getData.session ?? null;
 
       if (!nextSession?.user) {
+        const refreshFn = () => withTimeout(
+          supabase.auth.refreshSession(),
+          getTimeout('session'),
+          'Timed out while refreshing the session.',
+        );
+
         const {
           data: refreshData,
           error: refreshError,
-        } = await withTimeout(
-          supabase.auth.refreshSession(),
-          10000,
-          'Timed out while refreshing the session.',
-        );
+        } = isIOS && isDevelopment
+          ? await refreshFn()
+          : await withRetry(refreshFn);
+
         if (refreshError) {
           throw refreshError;
         }

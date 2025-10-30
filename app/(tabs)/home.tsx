@@ -2,7 +2,9 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  KeyboardAvoidingView,
   Modal,
+  Platform,
   Pressable,
   RefreshControl,
   ScrollView,
@@ -1019,8 +1021,8 @@ export default function HomeScreen() {
 
       <Modal
         visible={eventModalVisible}
-        transparent
-        animationType="fade"
+        animationType="slide"
+        presentationStyle="pageSheet"
         onRequestClose={() => {
           if (datePickerVisible) {
             setDatePickerVisible(false);
@@ -1030,210 +1032,225 @@ export default function HomeScreen() {
           handleCloseEventModal();
         }}
       >
-        <View style={styles.modalOverlay}>
-          <View
-            style={[
-              styles.modalCard,
-              { backgroundColor: theme.colors.surface },
-              datePickerVisible ? { opacity: 0.4 } : null,
-            ]}
-            pointerEvents={datePickerVisible ? 'none' : 'auto'}
-          >
-            <View style={styles.modalHeader}>
-              <Text style={[styles.modalTitle, { color: theme.colors.textPrimary }]}>
-                {editingEventId ? 'Edit event' : 'Add event'}
-              </Text>
-              <Pressable onPress={handleCloseEventModal} hitSlop={12}>
-                <Feather name="x" size={18} color={theme.colors.textMuted} />
-              </Pressable>
-            </View>
-
-            <View style={styles.modalField}>
-              <Text style={{ color: theme.colors.textSecondary, marginBottom: 4 }}>Name</Text>
-              <TextInput
-                value={eventName}
-                onChangeText={setEventName}
-                placeholder="GemCon 2025"
-                placeholderTextColor={theme.colors.textMuted}
-                style={[styles.modalInput, { borderColor: theme.colors.border, color: theme.colors.textPrimary }]}
-              />
-            </View>
-            <View style={styles.modalField}>
-              <Text style={{ color: theme.colors.textSecondary, marginBottom: 4 }}>Start date</Text>
-              <Pressable
-                onPress={() => openDatePicker('start')}
-                style={({ pressed }) => [
-                  styles.modalInput,
-                  styles.dateInput,
-                  {
-                    borderColor: theme.colors.border,
-                    backgroundColor: pressed ? 'rgba(0,0,0,0.04)' : 'transparent',
-                  },
-                ]}
-              >
-                <Text style={{ color: eventStartDate ? theme.colors.textPrimary : theme.colors.textMuted }}>
-                  {formatDateLabel(eventStartDate)}
-                </Text>
-              </Pressable>
-            </View>
-            <View style={styles.modalField}>
-              <Text style={{ color: theme.colors.textSecondary, marginBottom: 4 }}>End date</Text>
-              <Pressable
-                onPress={() => openDatePicker('end')}
-                style={({ pressed }) => [
-                  styles.modalInput,
-                  styles.dateInput,
-                  {
-                    borderColor: theme.colors.border,
-                    backgroundColor: pressed ? 'rgba(0,0,0,0.04)' : 'transparent',
-                  },
-                ]}
-              >
-                <Text style={{ color: eventEndDate ? theme.colors.textPrimary : theme.colors.textMuted }}>
-                  {formatDateLabel(eventEndDate ?? eventStartDate)}
-                </Text>
-              </Pressable>
-            </View>
-            <View style={styles.modalField}>
-              <Text style={{ color: theme.colors.textSecondary, marginBottom: 4 }}>Location (optional)</Text>
-              <TextInput
-                value={eventLocation}
-                onChangeText={setEventLocation}
-                placeholder="Austin Convention Center"
-                placeholderTextColor={theme.colors.textMuted}
-                style={[styles.modalInput, { borderColor: theme.colors.border, color: theme.colors.textPrimary }]}
-              />
-            </View>
-            <View style={styles.modalField}>
-              <Text style={{ color: theme.colors.textSecondary, marginBottom: 4 }}>Notes (optional)</Text>
-              <TextInput
-                value={eventNotes}
-                onChangeText={setEventNotes}
-                placeholder="Need extra signage"
-                placeholderTextColor={theme.colors.textMuted}
-                style={[
-                  styles.modalInput,
-                  styles.notesInput,
-                  {
-                    borderColor: theme.colors.border,
-                    color: theme.colors.textPrimary,
-                  },
-                ]}
-                multiline
-              />
-            </View>
-
-            <Pressable
-              onPress={handleSaveEvent}
-              style={({ pressed }) => [
-                styles.modalPrimary,
-                {
-                  backgroundColor: theme.colors.primary,
-                  opacity: pressed ? 0.85 : 1,
-                },
-              ]}
-            >
-              <Text style={[styles.modalPrimaryText, { color: theme.colors.surface }]}>
-                {editingEventId ? 'Save changes' : 'Save event'}
-              </Text>
-            </Pressable>
-          </View>
-
-          {datePickerVisible ? (
-            <View style={styles.datePickerOverlay}>
-              <Pressable
-                style={styles.datePickerBackdrop}
-                onPress={() => {
-                  setDatePickerVisible(false);
-                  setDatePickerType(null);
-                }}
-              />
-              <View style={[styles.datePickerCard, { backgroundColor: theme.colors.surface }]}>
-                <View style={styles.datePickerHeader}>
-                  <Pressable onPress={() => handleAdjustYear(-1)} hitSlop={10}>
-                    <Feather name="chevron-left" size={18} color={theme.colors.textPrimary} />
-                  </Pressable>
-                  <Text style={[styles.datePickerYear, { color: theme.colors.textPrimary }]}>{pickerYear}</Text>
-                  <Pressable onPress={() => handleAdjustYear(1)} hitSlop={10}>
-                    <Feather name="chevron-right" size={18} color={theme.colors.textPrimary} />
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.modalKeyboardAvoid}>
+          <View style={styles.modalOverlay}>
+            <View style={[styles.fullModalCard, { backgroundColor: theme.colors.background }]}>
+              <SafeAreaView edges={['top']} style={[styles.fullModalSafeArea, { backgroundColor: theme.colors.background }]}>
+                <View style={[styles.fullModalHeader, { borderBottomColor: theme.colors.border }]}>
+                  <Text style={[styles.modalTitle, { color: theme.colors.textPrimary }]}>
+                    {editingEventId ? 'Edit event' : 'Add event'}
+                  </Text>
+                  <Pressable
+                    onPress={handleCloseEventModal}
+                    hitSlop={12}
+                    style={({ pressed }) => ({
+                      padding: 8,
+                      borderRadius: 20,
+                      backgroundColor: pressed ? 'rgba(0,0,0,0.05)' : 'transparent',
+                    })}
+                  >
+                    <Feather name="x" size={24} color={theme.colors.textMuted} />
                   </Pressable>
                 </View>
-                <View style={styles.monthSelectorRow}>
-                  {MONTH_LABELS.map((label, index) => {
-                    const active = pickerMonth === index;
-                    return (
-                      <Pressable
-                        key={label}
-                        onPress={() => handleSelectMonth(index)}
-                        style={({ pressed }) => [
-                          styles.monthChip,
-                          {
-                            backgroundColor: active ? theme.colors.primary : 'transparent',
-                            borderColor: active ? theme.colors.primary : theme.colors.border,
-                            opacity: pressed ? 0.85 : 1,
-                          },
-                        ]}
-                      >
-                        <Text
-                          style={{
-                            color: active ? theme.colors.surface : theme.colors.textPrimary,
-                            fontWeight: active ? '600' : '500',
-                          }}
-                        >
-                          {label}
-                        </Text>
-                      </Pressable>
-                    );
-                  })}
+              </SafeAreaView>
+              <ScrollView
+                style={styles.fullModalContent}
+                contentContainerStyle={styles.fullModalContentContainer}
+                keyboardShouldPersistTaps="handled"
+              >
+                <View style={styles.modalField}>
+                  <Text style={{ color: theme.colors.textSecondary, marginBottom: 4 }}>Name</Text>
+                  <TextInput
+                    value={eventName}
+                    onChangeText={setEventName}
+                    placeholder="GemCon 2025"
+                    placeholderTextColor={theme.colors.textMuted}
+                    style={[styles.modalInput, { borderColor: theme.colors.border, color: theme.colors.textPrimary }]}
+                    returnKeyType="next"
+                    blurOnSubmit={false}
+                  />
                 </View>
-                <View style={styles.dayGrid}>
-                  {Array.from({ length: daysInMonth }, (_, index) => {
-                    const day = index + 1;
-                    const active = selectedDayForPicker === day;
-                    return (
-                      <Pressable
-                        key={day}
-                        onPress={() => handleSelectDate(day)}
-                        style={({ pressed }) => [
-                          styles.dayButton,
-                          {
-                            backgroundColor: active ? theme.colors.primary : 'transparent',
-                            borderColor: active ? theme.colors.primary : theme.colors.border,
-                            opacity: pressed ? 0.8 : 1,
-                          },
-                        ]}
-                      >
-                        <Text
-                          style={{
-                            color: active ? theme.colors.surface : theme.colors.textPrimary,
-                            fontWeight: active ? '600' : '500',
-                          }}
-                        >
-                          {day}
-                        </Text>
-                      </Pressable>
-                    );
-                  })}
+                <View style={styles.modalField}>
+                  <Text style={{ color: theme.colors.textSecondary, marginBottom: 4 }}>Start date</Text>
+                  <Pressable
+                    onPress={() => openDatePicker('start')}
+                    style={({ pressed }) => [
+                      styles.modalInput,
+                      styles.dateInput,
+                      {
+                        borderColor: theme.colors.border,
+                        backgroundColor: pressed ? 'rgba(0,0,0,0.04)' : 'transparent',
+                      },
+                    ]}
+                  >
+                    <Text style={{ color: eventStartDate ? theme.colors.textPrimary : theme.colors.textMuted }}>
+                      {formatDateLabel(eventStartDate)}
+                    </Text>
+                  </Pressable>
                 </View>
+                <View style={styles.modalField}>
+                  <Text style={{ color: theme.colors.textSecondary, marginBottom: 4 }}>End date</Text>
+                  <Pressable
+                    onPress={() => openDatePicker('end')}
+                    style={({ pressed }) => [
+                      styles.modalInput,
+                      styles.dateInput,
+                      {
+                        borderColor: theme.colors.border,
+                        backgroundColor: pressed ? 'rgba(0,0,0,0.04)' : 'transparent',
+                      },
+                    ]}
+                  >
+                    <Text style={{ color: eventEndDate ? theme.colors.textPrimary : theme.colors.textMuted }}>
+                      {formatDateLabel(eventEndDate ?? eventStartDate)}
+                    </Text>
+                  </Pressable>
+                </View>
+                <View style={styles.modalField}>
+                  <Text style={{ color: theme.colors.textSecondary, marginBottom: 4 }}>Location (optional)</Text>
+                  <TextInput
+                    value={eventLocation}
+                    onChangeText={setEventLocation}
+                    placeholder="Austin Convention Center"
+                    placeholderTextColor={theme.colors.textMuted}
+                    style={[styles.modalInput, { borderColor: theme.colors.border, color: theme.colors.textPrimary }]}
+                    returnKeyType="done"
+                  />
+                </View>
+                <View style={styles.modalField}>
+                  <Text style={{ color: theme.colors.textSecondary, marginBottom: 4 }}>Notes (optional)</Text>
+                  <TextInput
+                    value={eventNotes}
+                    onChangeText={setEventNotes}
+                    placeholder="Need extra signage"
+                    placeholderTextColor={theme.colors.textMuted}
+                    style={[
+                      styles.modalInput,
+                      styles.notesInput,
+                      {
+                        borderColor: theme.colors.border,
+                        color: theme.colors.textPrimary,
+                      },
+                    ]}
+                    multiline
+                  />
+                </View>
+              </ScrollView>
+              <SafeAreaView edges={['bottom']} style={[styles.fullModalFooterSafeArea, { backgroundColor: theme.colors.background, borderTopColor: theme.colors.border }]}>
                 <Pressable
+                  onPress={handleSaveEvent}
+                  style={({ pressed }) => [
+                    styles.modalPrimary,
+                    {
+                      backgroundColor: theme.colors.primary,
+                      opacity: pressed ? 0.85 : 1,
+                    },
+                  ]}
+                >
+                  <Text style={[styles.modalPrimaryText, { color: theme.colors.surface }]}>
+                    {editingEventId ? 'Save changes' : 'Save event'}
+                  </Text>
+                </Pressable>
+              </SafeAreaView>
+            </View>
+
+            {datePickerVisible ? (
+              <View style={styles.datePickerOverlay}>
+                <Pressable
+                  style={styles.datePickerBackdrop}
                   onPress={() => {
                     setDatePickerVisible(false);
                     setDatePickerType(null);
                   }}
-                  style={({ pressed }) => [
-                    styles.datePickerCancel,
-                    {
-                      opacity: pressed ? 0.8 : 1,
-                      borderColor: theme.colors.border,
-                    },
-                  ]}
+                />
+                <View style={[styles.datePickerCard, { backgroundColor: theme.colors.surface }]}
                 >
-                  <Text style={{ color: theme.colors.textSecondary }}>Cancel</Text>
-                </Pressable>
+                  <View style={styles.datePickerHeader}>
+                    <Pressable onPress={() => handleAdjustYear(-1)} hitSlop={10}>
+                      <Feather name="chevron-left" size={18} color={theme.colors.textPrimary} />
+                    </Pressable>
+                    <Text style={[styles.datePickerYear, { color: theme.colors.textPrimary }]}>{pickerYear}</Text>
+                    <Pressable onPress={() => handleAdjustYear(1)} hitSlop={10}>
+                      <Feather name="chevron-right" size={18} color={theme.colors.textPrimary} />
+                    </Pressable>
+                  </View>
+                  <View style={styles.monthSelectorRow}>
+                    {MONTH_LABELS.map((label, index) => {
+                      const active = pickerMonth === index;
+                      return (
+                        <Pressable
+                          key={label}
+                          onPress={() => handleSelectMonth(index)}
+                          style={({ pressed }) => [
+                            styles.monthChip,
+                            {
+                              backgroundColor: active ? theme.colors.primary : 'transparent',
+                              borderColor: active ? theme.colors.primary : theme.colors.border,
+                              opacity: pressed ? 0.85 : 1,
+                            },
+                          ]}
+                        >
+                          <Text
+                            style={{
+                              color: active ? theme.colors.surface : theme.colors.textPrimary,
+                              fontWeight: active ? '600' : '500',
+                            }}
+                          >
+                            {label}
+                          </Text>
+                        </Pressable>
+                      );
+                    })}
+                  </View>
+                  <View style={styles.dayGrid}>
+                    {Array.from({ length: daysInMonth }, (_, index) => {
+                      const day = index + 1;
+                      const active = selectedDayForPicker === day;
+                      return (
+                        <Pressable
+                          key={day}
+                          onPress={() => handleSelectDate(day)}
+                          style={({ pressed }) => [
+                            styles.dayButton,
+                            {
+                              backgroundColor: active ? theme.colors.primary : 'transparent',
+                              borderColor: active ? theme.colors.primary : theme.colors.border,
+                              opacity: pressed ? 0.8 : 1,
+                            },
+                          ]}
+                        >
+                          <Text
+                            style={{
+                              color: active ? theme.colors.surface : theme.colors.textPrimary,
+                              fontWeight: active ? '600' : '500',
+                            }}
+                          >
+                            {day}
+                          </Text>
+                        </Pressable>
+                      );
+                    })}
+                  </View>
+                  <Pressable
+                    onPress={() => {
+                      setDatePickerVisible(false);
+                      setDatePickerType(null);
+                    }}
+                    style={({ pressed }) => [
+                      styles.datePickerCancel,
+                      {
+                        opacity: pressed ? 0.8 : 1,
+                        borderColor: theme.colors.border,
+                      },
+                    ]}
+                  >
+                    <Text style={{ color: theme.colors.textSecondary }}>Cancel</Text>
+                  </Pressable>
+                </View>
               </View>
-            </View>
-          ) : null}
-        </View>
+            ) : null}
+          </View>
+        </KeyboardAvoidingView>
       </Modal>
 
       <Modal
@@ -1647,11 +1664,40 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     alignItems: 'center',
   },
+  modalKeyboardAvoid: {
+    flex: 1,
+  },
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(9, 10, 15, 0.45)',
-    justifyContent: 'center',
+  },
+  fullModalCard: {
+    flex: 1,
+  },
+  fullModalSafeArea: {
+    // Background color set dynamically via theme
+  },
+  fullModalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(0,0,0,0.08)',
+  },
+  fullModalContent: {
+    flex: 1,
+  },
+  fullModalContentContainer: {
     padding: 20,
+    paddingBottom: 40,
+  },
+  fullModalFooterSafeArea: {
+    paddingHorizontal: 20,
+    paddingTop: 12,
+    paddingBottom: 20,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(0,0,0,0.08)',
   },
   datePickerOverlay: {
     ...StyleSheet.absoluteFillObject,
@@ -1677,30 +1723,35 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   modalField: {
-    gap: 4,
+    gap: 8,
+    marginBottom: 8,
   },
   modalInput: {
     borderWidth: 1,
     borderRadius: 12,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    fontSize: 14,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    fontSize: 16,
+    minHeight: 52,
   },
   dateInput: {
     justifyContent: 'center',
-    minHeight: 44,
+    minHeight: 52,
   },
   notesInput: {
-    minHeight: 70,
+    minHeight: 100,
     textAlignVertical: 'top',
+    paddingTop: 14,
   },
   modalPrimary: {
     borderRadius: 12,
-    paddingVertical: 12,
+    paddingVertical: 16,
     alignItems: 'center',
+    minHeight: 52,
+    justifyContent: 'center',
   },
   modalPrimaryText: {
-    fontSize: 15,
+    fontSize: 16,
     fontWeight: '600',
   },
   loadingOverlay: {
