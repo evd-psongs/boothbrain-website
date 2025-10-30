@@ -13,26 +13,12 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
 
 import { formatCurrencyFromCents } from '@/utils/currency';
+import { formatTimestamp } from '@/utils/dates';
+import { formatPaymentLabel } from '@/utils/payment';
 import { useTheme } from '@/providers/ThemeProvider';
 import { useSupabaseAuth } from '@/providers/SupabaseAuthProvider';
 import { useSession } from '@/providers/SessionProvider';
 import { useOrderReports } from '@/hooks/useOrderReports';
-
-function formatPaymentLabel(value: string | null | undefined) {
-  return (value ?? 'cash')
-    .replace(/_/g, ' ')
-    .replace(/\b\w/g, (char) => char.toUpperCase());
-}
-
-function formatTimestamp(value: string | null) {
-  if (!value) return 'Unknown';
-  try {
-    const date = new Date(value);
-    return date.toLocaleString();
-  } catch {
-    return value;
-  }
-}
 
 function formatCsvValue(input: string | number | null | undefined): string {
   const raw = input ?? '';

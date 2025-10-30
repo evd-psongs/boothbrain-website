@@ -30,32 +30,10 @@ import { createEvent, updateEventRecord, deleteEventRecord } from '@/lib/events'
 import { StagedInventoryModal } from '@/components/StagedInventoryModal';
 import type { EventStagedInventoryItem } from '@/types/inventory';
 import { formatCurrencyFromCents } from '@/utils/currency';
+import { formatDateLabel, formatEventRange, getEventPhase, isFutureEvent, sortEventsByDate } from '@/utils/dates';
 
 const MONTH_LABELS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 const FREE_PLAN_EVENT_LIMIT = 1;
-
-const formatDateLabel = (date: Date | null) => {
-  if (!date) return 'Select date';
-  try {
-    return date.toLocaleDateString();
-  } catch {
-    return 'Select date';
-  }
-};
-
-const formatEventRange = (startISO: string, endISO: string) => {
-  try {
-    const start = new Date(startISO);
-    const end = new Date(endISO);
-    if (Number.isNaN(start.getTime())) return endISO;
-    if (Number.isNaN(end.getTime())) return start.toLocaleDateString();
-    const startLabel = start.toLocaleDateString();
-    const endLabel = end.toLocaleDateString();
-    return startLabel === endLabel ? startLabel : `${startLabel} → ${endLabel}`;
-  } catch {
-    return startISO;
-  }
-};
 
 export default function HomeScreen() {
   const { theme } = useTheme();
@@ -184,13 +162,8 @@ export default function HomeScreen() {
     return 'post';
   }, [events]);
 
-  const getEventPhase = useCallback((event: EventRecord): 'prep' | 'live' | 'post' => {
-    const now = Date.now();
-    const start = new Date(event.startDateISO).getTime();
-    const end = new Date(event.endDateISO).getTime();
-    if (now >= start && now <= end) return 'live';
-    if (now < start) return 'prep';
-    return 'post';
+  const getEventPhaseForEventForEvent = useCallback((event: EventRecord): 'prep' | 'live' | 'post' => {
+    return getEventPhaseForEvent(event.startDateISO, event.endDateISO);
   }, []);
 
   const handleRefresh = useCallback(() => {
@@ -902,7 +875,7 @@ export default function HomeScreen() {
               <Text style={[styles.sectionTitle, { color: theme.colors.textPrimary, marginBottom: 12 }]}>Event prep</Text>
               {events.map((event) => {
                 const expanded = expandedEvents[event.id] ?? false;
-                const eventPhase = getEventPhase(event);
+                const eventPhase = getEventPhaseForEvent(event);
                 const phaseLabel =
                   eventPhase === 'prep' ? 'Prep tasks' : eventPhase === 'live' ? 'Live tasks' : 'Wrap-up tasks';
                 const filteredChecklist = (event.checklist ?? []).filter((item) => item.phase === eventPhase);

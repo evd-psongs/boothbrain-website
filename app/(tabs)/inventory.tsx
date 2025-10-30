@@ -39,6 +39,7 @@ import {
 } from '@/lib/eventStagedInventory';
 import { deleteEventRecord } from '@/lib/events';
 import { formatCurrencyFromCents } from '@/utils/currency';
+import { formatEventRange } from '@/utils/dates';
 import { StagedInventoryModal } from '@/components/StagedInventoryModal';
 import { FREE_PLAN_ITEM_LIMIT } from '@/lib/freePlanLimits';
 
@@ -57,20 +58,6 @@ type SummaryStat = {
   subtle: string;
   subtleActive: string;
   filter: SummaryFilter;
-};
-
-const formatEventRange = (startISO: string, endISO: string) => {
-  try {
-    const start = new Date(startISO);
-    const end = new Date(endISO);
-    if (Number.isNaN(start.getTime())) return endISO;
-    if (Number.isNaN(end.getTime())) return start.toLocaleDateString();
-    const startLabel = start.toLocaleDateString();
-    const endLabel = end.toLocaleDateString();
-    return startLabel === endLabel ? startLabel : `${startLabel} → ${endLabel}`;
-  } catch {
-    return startISO;
-  }
 };
 
 const mapEventRowToRecord = (row: any): EventRecord => ({

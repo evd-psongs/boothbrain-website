@@ -19,94 +19,13 @@ import { useOrders } from '@/hooks/useOrders';
 import type { Order } from '@/types/orders';
 import { updateOrderStatus } from '@/lib/orders';
 import { formatCurrencyFromCents } from '@/utils/currency';
+import { formatTimeAgo } from '@/utils/dates';
+import { formatPaymentLabel, getPaymentVisuals } from '@/utils/payment';
 
 type FeedbackState = {
   type: 'success' | 'error' | 'info';
   message: string;
 } | null;
-
-const formatPaymentLabel = (value: string | null | undefined) =>
-  (value ?? 'cash')
-    .replace(/_/g, ' ')
-    .replace(/\b\w/g, (char) => char.toUpperCase());
-
-const formatTimeAgo = (value: string | null) => {
-  if (!value) return 'Moments ago';
-  const timestamp = new Date(value).getTime();
-  if (!Number.isFinite(timestamp)) return 'Moments ago';
-  const diffMs = Date.now() - timestamp;
-  if (diffMs < 0) return 'Just now';
-  const minute = 60 * 1000;
-  const hour = 60 * minute;
-  const day = 24 * hour;
-  const week = 7 * day;
-  const month = 30 * day;
-  const year = 365 * day;
-
-  if (diffMs < minute) return 'Moments ago';
-  if (diffMs < hour) {
-    const minutes = Math.max(1, Math.round(diffMs / minute));
-    return `${minutes} minute${minutes === 1 ? '' : 's'} ago`;
-  }
-  if (diffMs < day) {
-    const hours = Math.max(1, Math.round(diffMs / hour));
-    return `${hours} hour${hours === 1 ? '' : 's'} ago`;
-  }
-  if (diffMs < week) {
-    const days = Math.max(1, Math.round(diffMs / day));
-    return `${days} day${days === 1 ? '' : 's'} ago`;
-  }
-  if (diffMs < month) {
-    const weeks = Math.max(1, Math.round(diffMs / week));
-    return `${weeks} week${weeks === 1 ? '' : 's'} ago`;
-  }
-  if (diffMs < year) {
-    const months = Math.max(1, Math.round(diffMs / month));
-    return `${months} month${months === 1 ? '' : 's'} ago`;
-  }
-  const years = Math.max(1, Math.round(diffMs / year));
-  return `${years} year${years === 1 ? '' : 's'} ago`;
-};
-
-const getPaymentVisuals = (
-  method: string | null | undefined,
-  themeColors: ReturnType<typeof useTheme>['theme']['colors'],
-) => {
-  switch (method) {
-    case 'square':
-    case 'stripe':
-      return {
-        icon: 'credit-card' as const,
-        color: themeColors.primary,
-        background: 'rgba(101, 88, 245, 0.12)',
-      };
-    case 'venmo':
-      return {
-        icon: 'send' as const,
-        color: themeColors.secondary,
-        background: 'rgba(35, 181, 211, 0.16)',
-      };
-    case 'cash_app':
-      return {
-        icon: 'smartphone' as const,
-        color: themeColors.success,
-        background: 'rgba(45, 186, 127, 0.16)',
-      };
-    case 'paypal':
-      return {
-        icon: 'globe' as const,
-        color: themeColors.warning,
-        background: 'rgba(247, 181, 0, 0.16)',
-      };
-    case 'cash':
-    default:
-      return {
-        icon: 'dollar-sign' as const,
-        color: themeColors.textPrimary,
-        background: 'rgba(9, 10, 15, 0.08)',
-      };
-  }
-};
 
 export default function OrdersScreen() {
   const { theme } = useTheme();
