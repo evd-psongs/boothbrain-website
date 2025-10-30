@@ -1,0 +1,36 @@
+{
+  "cli": {
+    "version": ">= 16.25.1",
+    "appVersionSource": "remote"
+  },
+  "build": {
+    "development": {
+      "developmentClient": true,
+      "distribution": "internal"
+    },
+    "preview": {
+      "distribution": "internal",
+      "env": {
+        "EAS_POD_INSTALL_ARGS": "--repo-update",
+        "EXPO_PUBLIC_SUPABASE_URL": "https://vosnpecghhfinofsqcpv.supabase.co",
+        "EXPO_PUBLIC_SUPABASE_ANON_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZvc25wZWNnaGhmaW5vZnNxY3B2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTkwMTU4MDAsImV4cCI6MjA3NDU5MTgwMH0.GfAv2V7SvLGSMFEwZMphAu5lje3wZ2TmWxiEyr1TCvY",
+        "EXPO_PUBLIC_SITE_URL": "https://boothbrain.app",
+        "EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY": "pk_test_51SGBM7PkMHyN5aKkMaC6xMUkLE3Y5KhvdUaK2vXRJEqjuJ6ZOcrhabv0fFkXKf8vhkTOtcaoTGESiWuS1Zrpyc5A00BO8j2qEs"
+      }
+    },
+    "production": {
+      "distribution": "store",
+      "env": {
+        "EAS_POD_INSTALL_ARGS": "--repo-update",
+        "EXPO_PUBLIC_SUPABASE_URL": "https://vosnpecghhfinofsqcpv.supabase.co",
+        "EXPO_PUBLIC_SUPABASE_ANON_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZvc25wZWNnaGhmaW5vZnNxY3B2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTkwMTU4MDAsImV4cCI6MjA3NDU5MTgwMH0.GfAv2V7SvLGSMFEwZMphAu5lje3wZ2TmWxiEyr1TCvY",
+        "EXPO_PUBLIC_SITE_URL": "https://boothbrain.app",
+        "EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY": "pk_test_51SGBM7PkMHyN5aKkMaC6xMUkLE3Y5KhvdUaK2vXRJEqjuJ6ZOcrhabv0fFkXKf8vhkTOtcaoTGESiWuS1Zrpyc5A00BO8j2qEs"
+      },
+      "autoIncrement": true
+    }
+  },
+  "submit": {
+    "production": {}
+  }
+}
