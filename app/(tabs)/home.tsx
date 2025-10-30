@@ -1021,8 +1021,8 @@ export default function HomeScreen() {
 
       <Modal
         visible={eventModalVisible}
-        transparent
-        animationType="fade"
+        animationType="slide"
+        presentationStyle="pageSheet"
         onRequestClose={() => {
           if (datePickerVisible) {
             setDatePickerVisible(false);
@@ -1035,13 +1035,21 @@ export default function HomeScreen() {
         <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.modalKeyboardAvoid}>
           <View style={styles.modalOverlay}>
             <View style={[styles.fullModalCard, { backgroundColor: theme.colors.background }]}>
-              <SafeAreaView edges={['top']} style={styles.fullModalSafeArea}>
-                <View style={styles.fullModalHeader}>
+              <SafeAreaView edges={['top']} style={[styles.fullModalSafeArea, { backgroundColor: theme.colors.background }]}>
+                <View style={[styles.fullModalHeader, { borderBottomColor: theme.colors.border }]}>
                   <Text style={[styles.modalTitle, { color: theme.colors.textPrimary }]}>
                     {editingEventId ? 'Edit event' : 'Add event'}
                   </Text>
-                  <Pressable onPress={handleCloseEventModal} hitSlop={12}>
-                    <Feather name="x" size={18} color={theme.colors.textMuted} />
+                  <Pressable
+                    onPress={handleCloseEventModal}
+                    hitSlop={12}
+                    style={({ pressed }) => ({
+                      padding: 8,
+                      borderRadius: 20,
+                      backgroundColor: pressed ? 'rgba(0,0,0,0.05)' : 'transparent',
+                    })}
+                  >
+                    <Feather name="x" size={24} color={theme.colors.textMuted} />
                   </Pressable>
                 </View>
               </SafeAreaView>
@@ -1128,7 +1136,7 @@ export default function HomeScreen() {
                   />
                 </View>
               </ScrollView>
-              <SafeAreaView edges={['bottom']} style={styles.fullModalFooterSafeArea}>
+              <SafeAreaView edges={['bottom']} style={[styles.fullModalFooterSafeArea, { backgroundColor: theme.colors.background, borderTopColor: theme.colors.border }]}>
                 <Pressable
                   onPress={handleSaveEvent}
                   style={({ pressed }) => [
@@ -1661,10 +1669,35 @@ const styles = StyleSheet.create({
   },
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(9, 10, 15, 0.45)',
+  },
+  fullModalCard: {
+    flex: 1,
+  },
+  fullModalSafeArea: {
+    // Background color set dynamically via theme
+  },
+  fullModalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
     alignItems: 'center',
-    justifyContent: 'center',
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(0,0,0,0.08)',
+  },
+  fullModalContent: {
+    flex: 1,
+  },
+  fullModalContentContainer: {
     padding: 20,
+    paddingBottom: 40,
+  },
+  fullModalFooterSafeArea: {
+    paddingHorizontal: 20,
+    paddingTop: 12,
+    paddingBottom: 20,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(0,0,0,0.08)',
   },
   datePickerOverlay: {
     ...StyleSheet.absoluteFillObject,
@@ -1690,30 +1723,35 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   modalField: {
-    gap: 4,
+    gap: 8,
+    marginBottom: 8,
   },
   modalInput: {
     borderWidth: 1,
     borderRadius: 12,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    fontSize: 14,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    fontSize: 16,
+    minHeight: 52,
   },
   dateInput: {
     justifyContent: 'center',
-    minHeight: 44,
+    minHeight: 52,
   },
   notesInput: {
-    minHeight: 70,
+    minHeight: 100,
     textAlignVertical: 'top',
+    paddingTop: 14,
   },
   modalPrimary: {
     borderRadius: 12,
-    paddingVertical: 12,
+    paddingVertical: 16,
     alignItems: 'center',
+    minHeight: 52,
+    justifyContent: 'center',
   },
   modalPrimaryText: {
-    fontSize: 15,
+    fontSize: 16,
     fontWeight: '600',
   },
   loadingOverlay: {
