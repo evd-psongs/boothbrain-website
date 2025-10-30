@@ -15,11 +15,12 @@ BoothBrain is an Expo React Native app for managing vendor booth inventory and s
 ## Recent Changes
 - **2024-10-30:** Added Firebase Crashlytics for error monitoring
 - **2024-10-30:** Removed Sentry monitoring infrastructure
+- **2024-10-30:** Extracted common components from settings screen (203 lines reduced)
 
 ## Refactoring Progress
 
 ### Priority 1: Critical Files (2000+ lines)
-- [ ] `app/(tabs)/settings.tsx` (2,174 lines) → Split into 5 sections
+- [🔧] `app/(tabs)/settings.tsx` (~~2,174~~ → 1,971 lines) → Still needs splitting into 5 sections
 - [ ] `app/(tabs)/sale.tsx` (1,863 lines) → Extract modals and calculations
 - [ ] `app/(tabs)/home.tsx` (1,767 lines) → Separate event management
 - [ ] `app/(tabs)/inventory.tsx` (1,623 lines) → Extract CSV logic
@@ -29,9 +30,17 @@ BoothBrain is an Expo React Native app for managing vendor booth inventory and s
 - [ ] `SessionProvider` (398 lines) → Extract device ID management
 
 ### Priority 3: Shared Utilities
+- [✅] Created `/src/components/common/` with reusable UI components
 - [ ] Create `/src/utils/dateFormatting.ts`
 - [ ] Create `/src/utils/paymentFormatting.ts`
 - [ ] Create `/src/utils/asyncHelpers.ts`
+
+### Completed Components
+- `PrimaryButton` - Main action buttons
+- `SecondaryButton` - Alternative action buttons
+- `InputField` - Form inputs with labels
+- `SectionHeading` - Section headers
+- `FeedbackBanner` - Animated success/error messages
 
 ## Code Organization Guidelines
 
