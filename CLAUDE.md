@@ -16,6 +16,7 @@ BoothBrain is an Expo React Native app for managing vendor booth inventory and s
 - **2024-10-30:** Added Firebase Crashlytics for error monitoring
 - **2024-10-30:** Removed Sentry monitoring infrastructure
 - **2024-10-30:** Extracted common components from settings screen (203 lines reduced)
+- **2024-10-30:** Extracted date and payment utilities (87 lines removed, duplicates eliminated)
 
 ## Refactoring Progress
 
@@ -31,8 +32,8 @@ BoothBrain is an Expo React Native app for managing vendor booth inventory and s
 
 ### Priority 3: Shared Utilities
 - [✅] Created `/src/components/common/` with reusable UI components
-- [ ] Create `/src/utils/dateFormatting.ts`
-- [ ] Create `/src/utils/paymentFormatting.ts`
+- [✅] Created `/src/utils/dates.ts` with date/time formatting utilities
+- [✅] Created `/src/utils/payment.ts` with payment formatting utilities
 - [ ] Create `/src/utils/asyncHelpers.ts`
 
 ### Completed Components
