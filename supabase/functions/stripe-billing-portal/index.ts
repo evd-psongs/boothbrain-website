@@ -3,7 +3,6 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.45.4?target
 
 import { stripeRequest, createStripeCustomer } from '../_shared/stripe.ts';
 import { requireUserMatch } from '../_shared/auth.ts';
-import { withMonitoring } from '../_shared/monitoring.ts';
 
 type PortalRequest = {
   userId?: string;
@@ -54,10 +53,7 @@ async function ensureStripeCustomer(userId: string, existingCustomerId: string |
   return customer.id as string;
 }
 
-serve((req) =>
-  withMonitoring({
-    req,
-    handler: async () => {
+serve(async (req) => {
       if (req.method === 'OPTIONS') {
         return new Response('ok', { status: 200 });
       }
@@ -102,6 +98,4 @@ serve((req) =>
         console.error('stripe-billing-portal error', error);
         return json({ error: (error as Error).message ?? 'Failed to open billing portal.' }, 500);
       }
-    },
-  }),
-);
+});

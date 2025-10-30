@@ -2,7 +2,6 @@ import { serve } from 'https://deno.land/std@0.224.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.45.4?target=deno';
 
 import { stripeGet, stripeRequest, verifyStripeSignature } from '../_shared/stripe.ts';
-import { withMonitoring } from '../_shared/monitoring.ts';
 
 const webhookSecret = Deno.env.get('STRIPE_WEBHOOK_SECRET');
 const supabaseUrl = Deno.env.get('SUPABASE_URL');
@@ -182,10 +181,8 @@ async function upsertSubscription(stripeSubscription: any) {
   if (updateError) throw updateError;
 }
 
-serve((req) =>
-  withMonitoring({
-    req,
-    handler: async () => {
+serve(async (req) => {
+  try {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { status: 200 });
   }
@@ -238,6 +235,4 @@ serve((req) =>
     console.error('stripe-webhook handler error', error, { event: event.type });
     return json({ error: (error as Error).message ?? 'Webhook processing failed.' }, 500);
   }
-    },
-  }),
-);
+});
