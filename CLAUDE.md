@@ -3,26 +3,28 @@
 ## Project Overview
 BoothBrain is an Expo React Native app for managing vendor booth inventory and sales.
 
-## Last Session (2024-10-30)
-- ✅ Set up Firebase Crashlytics for error monitoring
-- ✅ Extracted common UI components (PrimaryButton, SecondaryButton, InputField, etc.)
-- ✅ Created date utilities (`/src/utils/dates.ts`) - eliminated duplicate code
-- ✅ Created payment utilities (`/src/utils/payment.ts`)
-- ✅ Extracted SessionManagementSection component (322 lines, ready but not integrated)
-- ✅ Reduced ~290 lines of code overall
-- ✅ Updated CLAUDE.md documentation
+## Last Session (2025-10-31)
+- ✅ **Fixed dev server permission errors** - cleaned node_modules and reinstalled dependencies
+- ✅ **Reorganized file structure** - moved misplaced files to correct `/src` directories:
+  - Moved `ErrorBoundary.tsx` from `/components` to `/src/components`
+  - Moved `firebase.ts` from `/lib/services` to `/src/lib/services`
+  - Moved `useCrashlyticsUser.ts` from `/hooks` to `/src/hooks`
+- ✅ **Created Firebase mock for Expo Go** - app now runs without development build
+- ✅ Cleaned up orphaned directories (`/components`, `/lib`, `/hooks`)
+- ✅ Updated imports to use correct `@/` alias paths
 
 ## Current Focus
-- 🎯 **Priority:** Complete SessionManagementSection integration in settings.tsx
-- 🎯 **Goal:** Reduce settings.tsx from 1,971 lines to under 500 lines
+- 🎯 **Priority:** Extract ProfileSection from settings.tsx (next component)
+- 🎯 **Goal:** Reduce settings.tsx from 1,559 lines to under 500 lines
 - 🔄 Extract remaining sections: ProfileSection, PasswordSection, PaymentSettingsSection
 - 🔄 Then tackle sale.tsx modal extractions (CheckoutModal, QuantityModal)
+- ✅ **Dev environment is now stable** - ready to continue refactoring
 
 ## Refactoring Impact Summary
-- **Total lines removed:** ~290 lines
+- **Total lines removed:** ~702 lines (290 + 412 from SessionManagement integration)
 - **Duplicate code eliminated:** Yes (formatEventRange, formatPaymentLabel)
 - **New utility files created:** 9 files
-- **Components extracted:** 6 reusable components
+- **Components extracted:** 7 reusable components (including SessionManagementSection)
 - **Files improved:** 6 major screens
 
 ## Tech Stack
@@ -35,16 +37,21 @@ BoothBrain is an Expo React Native app for managing vendor booth inventory and s
 - **Navigation:** Expo Router
 
 ## Recent Changes
-- **2024-10-30:** Added Firebase Crashlytics for error monitoring
-- **2024-10-30:** Removed Sentry monitoring infrastructure
-- **2024-10-30:** Extracted common components from settings screen (203 lines reduced)
-- **2024-10-30:** Extracted date and payment utilities (87 lines removed, duplicates eliminated)
-- **2024-10-30:** Created SessionManagementSection component (322 lines, ready for integration)
+- **2025-10-31:** Fixed file structure - moved files to correct `/src` directories
+- **2025-10-31:** Created Firebase mock implementation for Expo Go compatibility
+- **2025-10-31:** Fixed dev server permission errors and reinstalled dependencies
+- **2025-10-30:** Integrated SessionManagementSection into settings.tsx (412 lines removed)
+- **2025-10-30:** Removed unused session-related styles (122 lines)
+- **2025-10-29:** Added Firebase Crashlytics for error monitoring
+- **2025-10-29:** Removed Sentry monitoring infrastructure
+- **2025-10-29:** Extracted common components from settings screen (203 lines reduced)
+- **2025-10-29:** Extracted date and payment utilities (87 lines removed, duplicates eliminated)
+- **2025-10-29:** Created SessionManagementSection component (322 lines)
 
 ## Refactoring Progress
 
 ### Priority 1: Critical Files (2000+ lines)
-- [🔧] `app/(tabs)/settings.tsx` (~~2,174~~ → 1,971 lines) → Still needs splitting into 5 sections
+- [🔧] `app/(tabs)/settings.tsx` (~~2,174~~ → ~~1,971~~ → 1,559 lines) → Still needs 3 more sections extracted
 - [ ] `app/(tabs)/sale.tsx` (1,863 lines) → Extract modals and calculations
 - [ ] `app/(tabs)/home.tsx` (1,767 lines) → Separate event management
 - [ ] `app/(tabs)/inventory.tsx` (1,623 lines) → Extract CSV logic
@@ -79,7 +86,7 @@ BoothBrain is an Expo React Native app for managing vendor booth inventory and s
 - `FeedbackBanner` - Animated success/error messages
 
 #### Settings Components (`/src/components/settings/`)
-- `SessionManagementSection` - Session creation and management (322 lines, WIP integration)
+- `SessionManagementSection` - Session creation and management (322 lines, ✅ integrated)
 
 ## Code Organization Guidelines
 
@@ -96,9 +103,14 @@ src/
 │   ├── common/        # ✅ Reusable UI (buttons, inputs, banners)
 │   ├── settings/      # ✅ Settings screen sections (SessionManagement, etc.)
 │   ├── screens/       # 🔄 Screen-specific components (planned)
-│   └── modals/        # 🔄 Standalone modals (planned)
+│   ├── modals/        # 🔄 Standalone modals (planned)
+│   └── ErrorBoundary.tsx # ✅ Error boundary component
 ├── hooks/             # Business logic hooks
-├── lib/               # Supabase operations & business logic
+│   └── useCrashlyticsUser.ts # ✅ Firebase user sync hook
+├── lib/
+│   ├── services/      # External service integrations
+│   │   └── firebase.ts # ✅ Firebase Crashlytics (mocked for Expo Go)
+│   └── [supabase operations & business logic]
 ├── providers/         # Context providers (Auth, Session, Theme)
 ├── utils/             # ✅ Pure utility functions
 │   ├── dates.ts       # Date/time formatting
@@ -140,7 +152,7 @@ export function ProfileSection() {
 - Bundle size: < 50MB
 
 ## Known Issues
-- Settings screen still needs refactoring (1,971 lines - SessionManagement extracted but not integrated)
+- Settings screen still needs refactoring (1,559 lines - need to extract 3 more sections)
 - sale.tsx is too large (1,863 lines) - needs modal extraction
 - home.tsx is too large (1,767 lines) - needs event management separation
 - inventory.tsx is too large (1,623 lines) - needs CSV logic extraction
@@ -150,18 +162,22 @@ export function ProfileSection() {
 1. ✅ ~~Extract shared button components~~ (Completed)
 2. ✅ ~~Create date formatting utilities~~ (Completed)
 3. ✅ ~~Create payment utilities~~ (Completed)
-4. 🔄 Complete SessionManagementSection integration in settings.tsx
-5. Extract ProfileSection, PasswordSection, PaymentSettingsSection from settings.tsx
-6. Extract CheckoutModal and QuantityModal from sale.tsx
-7. Extract async helpers (withTimeout, withRetry) from SupabaseAuthProvider
-8. Add proper TypeScript types for all API responses
+4. ✅ ~~Integrate SessionManagementSection into settings.tsx~~ (Completed)
+5. Extract ProfileSection from settings.tsx (next priority)
+6. Extract PasswordSection and PaymentSettingsSection from settings.tsx
+7. Extract CheckoutModal and QuantityModal from sale.tsx
+8. Extract async helpers (withTimeout, withRetry) from SupabaseAuthProvider
+9. Add proper TypeScript types for all API responses
 
 ## Important Reminders & Don'ts
-- ⚠️ **SessionManagementSection is created but NOT integrated yet** - don't recreate it
+- ✅ **SessionManagementSection is integrated** - reduced settings.tsx by 412 lines
+- ⚠️ **Firebase is mocked for Expo Go** - Real implementation commented in `/src/lib/services/firebase.ts`
+- ⚠️ **To use real Firebase:** Create dev build with `npx expo run:android` or `npx expo run:ios`, then uncomment real implementation
 - ⚠️ **Firebase config files are in root** (google-services.json, GoogleService-Info.plist) - already set up
-- ⚠️ **Don't use Expo Go for Firebase testing** - requires development build
+- ⚠️ **All imports use `@/` alias** - Maps to `/src/*` directory per tsconfig.json
 - ⚠️ **formatEventRange() was duplicated** - now centralized in dates.ts
 - ⚠️ **formatPaymentLabel() was duplicated** - now centralized in payment.ts
+- 📝 **settings.tsx needs 3 more sections extracted** - ProfileSection, PasswordSection, PaymentSettingsSection
 
 ## Notes for Claude
 - 📖 **Always read this file first** at the start of each session

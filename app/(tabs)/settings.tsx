@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
+  ActivityIndicator,
   Alert,
   Image,
+  KeyboardTypeOptions,
   Linking,
   Pressable,
   ScrollView,
@@ -23,6 +25,7 @@ import {
   type FeedbackState,
   type InputFieldProps,
 } from '@/components/common';
+import { SessionManagementSection } from '@/components/settings/SessionManagementSection';
 import { useSubscriptionPlans } from '@/hooks/useSubscriptionPlans';
 import { startCheckoutSession, openBillingPortal } from '@/lib/billing';
 import { updateProfile } from '@/lib/profile';
@@ -886,329 +889,38 @@ export default function SettingsScreen() {
           <Text style={[styles.screenSubtitle, { color: theme.colors.textSecondary }]}>Manage your account details, subscription, and payment preferences.</Text>
         </View>
 
-        <View style={[styles.card, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }] }>
-          <SectionHeading
-            title="Sessions"
-            subtitle="Sync inventory across devices by creating a shared session or joining with a code."
-            titleColor={theme.colors.textPrimary}
-            subtitleColor={theme.colors.textSecondary}
-          />
-
-          {currentSession ? (
-            <>
-              <Text style={[styles.sessionHint, { color: theme.colors.textSecondary }]}>
-                {currentSession.isHost
-                  ? 'You are hosting this session. Share the code (and passphrase if set) privately, then approve requests below.'
-                  : 'You are connected to a shared session from another device.'}
-              </Text>
-
-              <View style={styles.metaRow}>
-                <Text style={[styles.metaLabel, { color: theme.colors.textSecondary }]}>Session code</Text>
-                <Text style={[styles.sessionCode, { color: theme.colors.textPrimary }]}>
-                  {formatSessionCode(currentSession.code)}
-                </Text>
-              </View>
-
-              <View style={styles.metaRow}>
-                <Text style={[styles.metaLabel, { color: theme.colors.textSecondary }]}>Role</Text>
-                <Text style={[styles.metaValue, { color: theme.colors.textPrimary }]}>
-                  {currentSession.isHost ? 'Host' : 'Participant'}
-                </Text>
-              </View>
-
-              <View style={styles.metaRow}>
-                <Text style={[styles.metaLabel, { color: theme.colors.textSecondary }]}>Created</Text>
-                <Text style={[styles.metaValue, { color: theme.colors.textPrimary }]}>
-                  {new Date(currentSession.createdAt).toLocaleString()}
-                </Text>
-              </View>
-
-              <View style={styles.metaRow}>
-                <Text style={[styles.metaLabel, { color: theme.colors.textSecondary }]}>Passphrase required</Text>
-                <Text style={[styles.metaValue, { color: theme.colors.textPrimary }]}>
-                  {currentSession.requiresPassphrase ? 'Yes' : 'No'}
-                </Text>
-              </View>
-
-              <View style={styles.metaRow}>
-                <Text style={[styles.metaLabel, { color: theme.colors.textSecondary }]}>Host approval</Text>
-                <Text style={[styles.metaValue, { color: theme.colors.textPrimary }]}>
-                  {currentSession.approvalRequired ? 'Required' : 'Automatic'}
-                </Text>
-              </View>
-
-              {currentSession.isHost ? (
-                <>
-                  <View
-                    style={[
-                      styles.securityCard,
-                      { borderColor: theme.colors.border, backgroundColor: theme.colors.surfaceMuted },
-                    ]}
-                  >
-                    <View style={styles.securityHeader}>
-                      <Text style={[styles.securityTitle, { color: theme.colors.textPrimary }]}>Security overview</Text>
-                      <Pressable
-                        onPress={() => {
-                          void loadSecurityOverview();
-                        }}
-                        disabled={loadingSecurityOverview}
-                        style={styles.securityRefresh}
-                      >
-                        {loadingSecurityOverview ? (
-                          <ActivityIndicator size="small" color={theme.colors.textSecondary} />
-                        ) : (
-                          <Text style={[styles.securityRefreshText, { color: theme.colors.primary }]}>Refresh</Text>
-                        )}
-                      </Pressable>
-                    </View>
-                    <Text style={[styles.securityBody, { color: theme.colors.textSecondary }]}>
-                      Pending requests:{' '}
-                      <Text style={[styles.securityValue, { color: theme.colors.textPrimary }]}>
-                        {securityOverview?.pendingRequests ?? pendingRequests.length}
-                      </Text>
-                    </Text>
-                    <Text style={[styles.securityBody, { color: theme.colors.textSecondary }]}>
-                      Failed attempts (10 min):{' '}
-                      <Text style={[styles.securityValue, { color: theme.colors.textPrimary }]}>
-                        {securityOverview?.recentFailedAttempts ?? 0}
-                      </Text>
-                    </Text>
-                    <Text style={[styles.securityBody, { color: theme.colors.textSecondary }]}>
-                      Throttled attempts (10 min):{' '}
-                      <Text style={[styles.securityValue, { color: theme.colors.textPrimary }]}>
-                        {securityOverview?.recentRateLimited ?? 0}
-                      </Text>
-                    </Text>
-                    {securityOverview?.lastFailedAttempt ? (
-                      <Text style={[styles.securityBodyMuted, { color: theme.colors.textSecondary }]}>
-                        Last failed attempt {formatRelativeTime(securityOverview.lastFailedAttempt)}.
-                      </Text>
-                    ) : null}
-                    {(securityOverview?.recentFailedAttempts ?? 0) >= 5 ? (
-                      <Text style={[styles.securityWarning, { color: theme.colors.error }]}>
-                        Multiple failures detected. Rotate the session or end it if this wasn’t you.
-                      </Text>
-                    ) : null}
-                  </View>
-
-                  <View
-                    style={[
-                      styles.pendingCard,
-                      { borderColor: theme.colors.border, backgroundColor: theme.colors.surfaceMuted },
-                    ]}
-                  >
-                    <View style={styles.pendingHeader}>
-                      <Text style={[styles.pendingTitle, { color: theme.colors.textPrimary }]}>Pending join requests</Text>
-                      <Pressable
-                        onPress={() => {
-                          void loadPendingRequests();
-                        }}
-                        disabled={loadingPendingRequests}
-                        style={styles.securityRefresh}
-                      >
-                        {loadingPendingRequests ? (
-                          <ActivityIndicator size="small" color={theme.colors.textSecondary} />
-                        ) : (
-                          <Text style={[styles.securityRefreshText, { color: theme.colors.primary }]}>Refresh</Text>
-                        )}
-                      </Pressable>
-                    </View>
-                    {pendingRequests.length === 0 ? (
-                      <Text style={[styles.pendingEmptyText, { color: theme.colors.textSecondary }]}>
-                        No pending requests right now.
-                      </Text>
-                    ) : (
-                      pendingRequests.map((request) => {
-                        const isResolving = resolvingRequest?.id === request.id;
-                        const isApproving = isResolving && resolvingRequest?.mode === 'approve';
-                        const isDenying = isResolving && resolvingRequest?.mode === 'deny';
-                        return (
-                          <View
-                            key={request.id}
-                            style={[styles.pendingRow, { borderColor: theme.colors.border, backgroundColor: theme.colors.surface }]}
-                          >
-                            <View style={styles.pendingInfo}>
-                              <Text style={[styles.pendingName, { color: theme.colors.textPrimary }]}>
-                                {request.participantName}
-                              </Text>
-                              <Text style={[styles.pendingEmail, { color: theme.colors.textSecondary }]}>
-                                {request.participantEmail || 'No email on file'}
-                              </Text>
-                              <Text style={[styles.pendingMeta, { color: theme.colors.textSecondary }]}>
-                                Requested {formatRelativeTime(request.requestedAt)}
-                                {request.deviceId ? ` • ${request.deviceId}` : ''}
-                              </Text>
-                            </View>
-                            <View style={styles.pendingActions}>
-                              <Pressable
-                                disabled={Boolean(resolvingRequest)}
-                                onPress={() => {
-                                  void handleResolveRequest(request.id, 'deny');
-                                }}
-                                style={({ pressed }) => [
-                                  styles.pendingActionButton,
-                                  styles.pendingDenyButton,
-                                  {
-                                    borderColor: theme.colors.error,
-                                    opacity: pressed && !resolvingRequest ? 0.85 : 1,
-                                  },
-                                ]}
-                              >
-                                {isDenying ? (
-                                  <ActivityIndicator size="small" color={theme.colors.error} />
-                                ) : (
-                                  <Text style={[styles.pendingActionText, { color: theme.colors.error }]}>Deny</Text>
-                                )}
-                              </Pressable>
-                              <Pressable
-                                disabled={Boolean(resolvingRequest)}
-                                onPress={() => {
-                                  void handleResolveRequest(request.id, 'approve');
-                                }}
-                                style={({ pressed }) => [
-                                  styles.pendingActionButton,
-                                  styles.pendingApproveButton,
-                                  {
-                                    backgroundColor: theme.colors.primary,
-                                    opacity: pressed && !resolvingRequest ? 0.9 : 1,
-                                  },
-                                ]}
-                              >
-                                {isApproving ? (
-                                  <ActivityIndicator size="small" color={theme.colors.surface} />
-                                ) : (
-                                  <Text style={[styles.pendingActionText, { color: theme.colors.surface }]}>Approve</Text>
-                                )}
-                              </Pressable>
-                            </View>
-                          </View>
-                        );
-                      })
-                    )}
-                  </View>
-
-                  <View style={styles.buttonSpacing}>
-                    <SecondaryButton
-                      title="Share code"
-                      onPress={handleShareSession}
-                      backgroundColor="transparent"
-                      borderColor={theme.colors.primary}
-                      textColor={theme.colors.primary}
-                    />
-                  </View>
-                </>
-              ) : null}
-
-              <View style={styles.buttonSpacing}>
-                <PrimaryButton
-                  title="Clear session"
-                  onPress={handleClearSession}
-                  disabled={clearingSession || sessionLoading}
-                  loading={clearingSession || sessionLoading}
-                  backgroundColor={theme.colors.error}
-                  textColor={theme.colors.surface}
-                />
-              </View>
-            </>
-          ) : (
-            <>
-              <Text style={[styles.sessionHint, { color: theme.colors.textSecondary }]}>
-                Create a session to broadcast inventory updates, or join one that’s already in progress.
-              </Text>
-
-              <InputField
-                label="Optional passphrase"
-                value={sessionPassphrase}
-                onChange={setSessionPassphrase}
-                placeholder="Share privately with teammates"
-                placeholderColor={theme.colors.textMuted}
-                borderColor={theme.colors.border}
-                backgroundColor={theme.colors.surface}
-                textColor={theme.colors.textPrimary}
-                secureTextEntry
-                autoCapitalize="none"
-              />
-
-              <Text style={[styles.sessionSubHint, { color: theme.colors.textSecondary }]}>
-                Hosts must approve join requests. Passphrases need at least {MIN_SESSION_PASSPHRASE_LENGTH} characters.
-              </Text>
-
-              <PrimaryButton
-                title="Create session"
-                onPress={handleCreateSession}
-                disabled={creatingSession || sessionLoading}
-                loading={creatingSession || sessionLoading}
-                backgroundColor={theme.colors.primary}
-                textColor={theme.colors.surface}
-              />
-
-              {showJoinForm ? (
-                <>
-                  <InputField
-                    label="Join code"
-                    value={joinCode}
-                    onChange={handleJoinCodeChange}
-                    placeholder="ABCD-EFGH-IJKL"
-                    placeholderColor={theme.colors.textMuted}
-                    borderColor={theme.colors.border}
-                    backgroundColor={theme.colors.surface}
-                    textColor={theme.colors.textPrimary}
-                    autoCapitalize="characters"
-                  />
-
-                  <InputField
-                    label="Passphrase"
-                    value={joinPassphrase}
-                    onChange={setJoinPassphrase}
-                    placeholder="Enter passphrase (if required)"
-                    placeholderColor={theme.colors.textMuted}
-                    borderColor={theme.colors.border}
-                    backgroundColor={theme.colors.surface}
-                    textColor={theme.colors.textPrimary}
-                    secureTextEntry
-                    autoCapitalize="none"
-                  />
-
-                  <PrimaryButton
-                    title="Confirm join"
-                    onPress={handleJoinSession}
-                    disabled={!joinCodeReady || joiningSession || sessionLoading}
-                    loading={joiningSession || sessionLoading}
-                    backgroundColor={theme.colors.secondary}
-                    textColor={theme.colors.surface}
-                  />
-
-                  <PrimaryButton
-                    title="Cancel"
-                    onPress={() => {
-                      clearError();
-                      setShowJoinForm(false);
-                      setJoinCode('');
-                      setJoinPassphrase('');
-                    }}
-                    backgroundColor={theme.colors.surfaceMuted}
-                    textColor={theme.colors.textPrimary}
-                  />
-                </>
-              ) : (
-                <PrimaryButton
-                  title="Join session"
-                  onPress={() => {
-                    clearError();
-                    setShowJoinForm(true);
-                    setJoinPassphrase('');
-                  }}
-                  backgroundColor={theme.colors.secondary}
-                  textColor={theme.colors.surface}
-                />
-              )}
-            </>
-          )}
-
-          {sessionError ? (
-            <Text style={[styles.errorText, { color: theme.colors.error }]}>{sessionError}</Text>
-          ) : null}
-        </View>
+        <SessionManagementSection
+          theme={theme}
+          currentSession={currentSession}
+          sessionLoading={sessionLoading}
+          sessionError={sessionError}
+          sessionPassphrase={sessionPassphrase}
+          setSessionPassphrase={setSessionPassphrase}
+          creatingSession={creatingSession}
+          handleCreateSession={handleCreateSession}
+          showJoinForm={showJoinForm}
+          setShowJoinForm={setShowJoinForm}
+          joinCode={joinCode}
+          setJoinCode={setJoinCode}
+          joinPassphrase={joinPassphrase}
+          setJoinPassphrase={setJoinPassphrase}
+          joinCodeReady={joinCodeReady}
+          joiningSession={joiningSession}
+          handleJoinSession={handleJoinSession}
+          handleJoinCodeChange={handleJoinCodeChange}
+          clearingSession={clearingSession}
+          handleClearSession={handleClearSession}
+          handleShareSession={handleShareSession}
+          clearError={clearError}
+          securityOverview={securityOverview || undefined}
+          loadingSecurityOverview={loadingSecurityOverview}
+          loadSecurityOverview={loadSecurityOverview}
+          pendingRequests={pendingRequests}
+          loadingPendingRequests={loadingPendingRequests}
+          loadPendingRequests={loadPendingRequests}
+          resolvingRequest={resolvingRequest || undefined}
+          handleResolveRequest={handleResolveRequest}
+        />
 
         <View style={[styles.card, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }] }>
           <SectionHeading
@@ -1714,128 +1426,6 @@ const styles = StyleSheet.create({
   metaValue: {
     fontSize: 15,
     fontWeight: '600',
-  },
-  sessionHint: {
-    fontSize: 13,
-    lineHeight: 20,
-    marginBottom: 12,
-  },
-  sessionSubHint: {
-    fontSize: 12,
-    lineHeight: 18,
-    marginBottom: 16,
-  },
-  securityCard: {
-    borderWidth: 1,
-    borderRadius: 12,
-    padding: 12,
-    marginTop: 12,
-  },
-  securityHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 8,
-  },
-  securityTitle: {
-    fontSize: 15,
-    fontWeight: '600',
-  },
-  securityRefresh: {
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-  },
-  securityRefreshText: {
-    fontSize: 13,
-    fontWeight: '600',
-  },
-  securityBody: {
-    fontSize: 13,
-    lineHeight: 20,
-  },
-  securityBodyMuted: {
-    fontSize: 12,
-    marginTop: 4,
-  },
-  securityValue: {
-    fontWeight: '600',
-  },
-  securityWarning: {
-    fontSize: 12,
-    fontWeight: '600',
-    marginTop: 8,
-  },
-  pendingCard: {
-    borderWidth: 1,
-    borderRadius: 12,
-    padding: 12,
-    marginTop: 12,
-    gap: 12,
-  },
-  pendingHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  pendingTitle: {
-    fontSize: 15,
-    fontWeight: '600',
-  },
-  pendingEmptyText: {
-    fontSize: 13,
-  },
-  pendingRow: {
-    borderWidth: 1,
-    borderRadius: 12,
-    padding: 12,
-    gap: 8,
-  },
-  pendingInfo: {
-    gap: 4,
-  },
-  pendingName: {
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  pendingEmail: {
-    fontSize: 13,
-  },
-  pendingMeta: {
-    fontSize: 12,
-  },
-  pendingActions: {
-    flexDirection: 'row',
-    gap: 12,
-  },
-  pendingActionButton: {
-    flex: 1,
-    borderRadius: 10,
-    borderWidth: 1,
-    paddingVertical: 10,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  pendingDenyButton: {
-    backgroundColor: 'transparent',
-  },
-  pendingApproveButton: {
-    borderWidth: 0,
-  },
-  pendingActionText: {
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  sessionCode: {
-    fontSize: 18,
-    fontWeight: '700',
-    letterSpacing: 1,
-  },
-  buttonSpacing: {
-    marginTop: 12,
-  },
-  errorText: {
-    marginTop: 12,
-    fontSize: 13,
   },
   planSectionTitle: {
     fontSize: 13,
