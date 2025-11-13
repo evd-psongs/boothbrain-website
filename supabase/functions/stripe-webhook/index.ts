@@ -182,7 +182,6 @@ async function upsertSubscription(stripeSubscription: any) {
 }
 
 serve(async (req) => {
-  try {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { status: 200 });
   }

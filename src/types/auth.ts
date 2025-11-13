@@ -47,6 +47,7 @@ export type SignUpData = {
   email: string;
   password: string;
   fullName?: string;
+  businessName?: string;
 };
 
 export type SignInData = {

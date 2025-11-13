@@ -3,6 +3,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { fetchOrders } from '@/lib/orders';
 import { supabase } from '@/lib/supabase';
 import type { Order } from '@/types/orders';
+import { getErrorMessage } from '@/types/database';
 
 export function useOrders(userId: string | null | undefined, sessionId?: string | null) {
   const [orders, setOrders] = useState<Order[]>([]);
@@ -26,9 +27,9 @@ export function useOrders(userId: string | null | undefined, sessionId?: string 
         if (!options?.signal?.aborted) {
           setOrders(data);
         }
-      } catch (err: any) {
+      } catch (err) {
         if (!options?.signal?.aborted) {
-          setError(err?.message ?? 'Failed to load orders.');
+          setError(getErrorMessage(err));
         }
       } finally {
         if (!options?.signal?.aborted) {

@@ -11,14 +11,29 @@ BoothBrain is an Expo React Native app for managing vendor booth inventory and s
 - All major files now under 1,300 lines (most under 200 lines)
 - Created clear separation of concerns with dedicated service layers
 
-## Last Session (2025-11-09)
+## Last Session (2025-11-10)
+- ✅ **Fixed all ESLint unused variable/import errors** - 22 errors resolved across 10 files
+- ✅ Cleaned up unused imports and variables:
+  - `home.tsx`: Removed formatDateLabel, isFutureEvent, sortEventsByDate, getEventPhase, getEventPhaseForEvent
+  - `sale.tsx`: Removed KeyboardAvoidingView, Platform, ScrollView, Switch, CartLine, DISCOUNT_PRESETS, PAYMENT_BUTTONS
+  - `settings.tsx`: Removed useRef, InputField, InputFieldProps, formatRelativeTime function
+  - `EventModal.tsx`: Removed useEffect
+  - `SessionManagementSection.tsx`: Removed SESSION_CODE_LENGTH
+  - `useAuthOperations.ts`: Removed User type import
+  - `useCrashlyticsUser.ts`: Removed unused session variable
+  - `SessionProvider.tsx`: Removed SESSION_CODE_LENGTH from type imports
+  - `SupabaseAuthProvider.tsx`: Removed User type import
+  - `asyncHelpers.ts`: Removed unused lastPromise variable
+- ✅ TypeScript compilation still passes with zero errors
+- ⚠️ 2 parsing errors remain in Stripe webhook functions (missing catch/finally blocks)
+
+Previous session (2025-11-09):
 - ✅ **Fixed session ending error** - PostgREST schema mismatch resolved
 - ✅ Fixed "Could not find the 'ended_at' column" error when ending sessions:
   - Updated `sessionApi.ts` to use `is_active: false` instead of non-existent `ended_at` column
   - Sessions table uses `is_active` boolean field, not `ended_at` timestamp
   - Added missing `is_active` field to SessionRow types in both `session.ts` and `database.ts`
   - Fixed SessionRow type in `database.ts` to match actual DB schema (added `organization_id`, `expires_at`, etc.)
-- ✅ TypeScript compilation still passes with zero errors
 
 Previous session (2025-11-08):
 - ✅ **Major TypeScript type system overhaul completed!**
@@ -87,8 +102,9 @@ Previous session (2025-10-31):
 - ✅ **COMPLETED:** TypeScript type system overhaul - zero compilation errors!
 - 🎉 **Major refactoring complete!** All critical files and providers now under control
 - ✅ **Dev environment is stable** - `npm run typecheck` passes with no errors
-- 🔧 **Current phase:** Bug fixing and testing after refactoring
-- 🎯 **Next priorities:** Continue testing functionality, fix any remaining issues, then feature development
+- ✅ **ESLint cleanup complete** - Fixed 22 unused variable/import errors (2025-11-10)
+- 🔧 **Current phase:** Code quality improvements and bug fixing
+- 🎯 **Next priorities:** Fix Stripe webhook parsing errors, continue testing functionality, then feature development
 
 ## Refactoring Impact Summary
 - **Total lines removed:** ~3,436 lines across major screens and providers
@@ -277,6 +293,9 @@ export function ProfileSection() {
 - ✅ ~~Missing loading states in some API calls~~ (Completed - all hooks verified)
 - ✅ ~~Some TypeScript types could be improved~~ (Completed - zero compilation errors)
 - ✅ ~~Session ending PostgREST error~~ (Fixed 2025-11-09 - schema mismatch resolved)
+- ⚠️ **Parsing errors in Stripe webhook functions** (2 errors):
+  - `supabase/functions/stripe-manage-pause/index.ts:257` - Missing catch/finally block
+  - `supabase/functions/stripe-webhook/index.ts:238` - Missing catch/finally block
 - No major architectural issues remaining - codebase is clean and maintainable!
 
 ## Next Tasks

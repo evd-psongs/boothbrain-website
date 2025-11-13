@@ -1,5 +1,6 @@
 import { supabase } from '@/lib/supabase';
 import type { InventoryItem } from '@/types/inventory';
+import type { ItemRow } from '@/types/database';
 
 export type InventoryInput = {
   name: string;
@@ -11,7 +12,7 @@ export type InventoryInput = {
   imagePaths?: string[];
 };
 
-const mapRowToItem = (row: any): InventoryItem => ({
+const mapRowToItem = (row: ItemRow): InventoryItem => ({
   id: row.id,
   ownerUserId: row.owner_user_id,
   sessionId: row.event_id ?? null,

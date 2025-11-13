@@ -6,42 +6,7 @@ import {
   type OrderStatus,
   type PaymentMethod,
 } from '@/types/orders';
-
-type OrderRow = {
-  id: string;
-  owner_user_id: string | null;
-  session_id: string | null;
-  status: string | null;
-  payment_method: string | null;
-  total_cents: number | null;
-  tax_cents: number | null;
-  tax_rate_bps: number | null;
-  event_id: string | null;
-  buyer_name: string | null;
-  buyer_contact: string | null;
-  description: string | null;
-  deposit_taken: boolean | null;
-  device_id: string | null;
-  created_at: string | null;
-  updated_at: string | null;
-};
-
-type OrderItemRow = {
-  order_id: string | null;
-  item_id: string | null;
-  quantity: number | null;
-  price_cents: number | null;
-  items?:
-    | {
-        name: string | null;
-        sku: string | null;
-      }
-    | {
-        name: string | null;
-        sku: string | null;
-      }[]
-    | null;
-};
+import type { OrderRow, OrderItemWithDetails } from '@/types/database';
 
 const mapRowToOrder = (row: OrderRow): Order => ({
   id: row.id,
@@ -63,7 +28,7 @@ const mapRowToOrder = (row: OrderRow): Order => ({
   updatedAt: row.updated_at,
 });
 
-const mapOrderItems = (items: OrderItemRow[] | null | undefined): OrderItemSummary[] => {
+const mapOrderItems = (items: OrderItemWithDetails[] | null | undefined): OrderItemSummary[] => {
   if (!items?.length) return [];
   return items.map((item) => ({
     orderId: item.order_id ?? '',
@@ -151,8 +116,8 @@ export async function fetchOrderSummaries({ userId, sessionId = null }: FetchOrd
     throw error;
   }
 
-  return ((data ?? []) as (OrderRow & { order_items?: OrderItemRow[] })[]).map((row) => ({
-    ...mapRowToOrder(row),
+  return (data ?? []).map((row: any) => ({
+    ...mapRowToOrder(row as OrderRow),
     items: mapOrderItems(row.order_items ?? []),
   }));
 }

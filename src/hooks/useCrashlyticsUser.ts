@@ -7,7 +7,7 @@ import { setUserId, setUserAttributes } from '@/lib/services/firebase';
  * This helps identify which users are experiencing crashes
  */
 export const useCrashlyticsUser = () => {
-  const { session, user } = useSupabaseAuth();
+  const { user } = useSupabaseAuth();
 
   useEffect(() => {
     if (user) {
@@ -21,12 +21,12 @@ export const useCrashlyticsUser = () => {
         attributes.email = user.email;
       }
 
-      if (user.profile?.display_name) {
-        attributes.name = user.profile.display_name;
+      if (user.profile?.fullName) {
+        attributes.name = user.profile.fullName;
       }
 
-      if (user.subscription?.plan_tier) {
-        attributes.planTier = user.subscription.plan_tier;
+      if (user.subscription?.plan?.tier) {
+        attributes.planTier = user.subscription.plan.tier;
       }
 
       // Add any other relevant user metadata

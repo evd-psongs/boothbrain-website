@@ -1,39 +1,59 @@
 import { supabase } from '@/lib/supabase';
 import { mapPauseErrorMessage } from '@/utils/pauseErrors';
 
-const normalizeError = (error: any): string => {
+const normalizeError = (error: unknown): string => {
   if (!error) return 'Unknown error';
+
+  // Handle string errors
+  if (typeof error === 'string') return error;
+
+  // Handle Error instances
+  if (error instanceof Error) return error.message;
+
+  // Handle object errors
   if (typeof error === 'object' && error !== null) {
-    if (typeof error.details === 'string' && error.details.trim()) return error.details;
-    const context = (error as any).context;
+    const errorObj = error as Record<string, unknown>;
+
+    // Check for details field
+    if (typeof errorObj.details === 'string' && errorObj.details.trim()) return errorObj.details;
+
+    // Check for context field
+    const context = errorObj.context;
     if (typeof context === 'string' && context.trim()) return context;
     if (context && typeof context === 'object') {
-      if (typeof context.error === 'string' && context.error.trim()) return context.error;
-      if (typeof context.message === 'string' && context.message.trim()) return context.message;
-      const response = (context as any).response;
+      const contextObj = context as Record<string, unknown>;
+      if (typeof contextObj.error === 'string' && contextObj.error.trim()) return contextObj.error;
+      if (typeof contextObj.message === 'string' && contextObj.message.trim()) return contextObj.message;
+
+      const response = contextObj.response;
       if (response && typeof response === 'object') {
-        if (typeof response.error === 'string' && response.error.trim()) return response.error;
-        if (typeof response.message === 'string' && response.message.trim()) return response.message;
-        if (typeof response.body === 'string' && response.body.trim()) {
+        const responseObj = response as Record<string, unknown>;
+        if (typeof responseObj.error === 'string' && responseObj.error.trim()) return responseObj.error;
+        if (typeof responseObj.message === 'string' && responseObj.message.trim()) return responseObj.message;
+        if (typeof responseObj.body === 'string' && responseObj.body.trim()) {
           try {
-            const parsed = JSON.parse(response.body);
+            const parsed = JSON.parse(responseObj.body);
             if (parsed?.error) return String(parsed.error);
             if (parsed?.message) return String(parsed.message);
           } catch {
-            return response.body;
+            return responseObj.body;
           }
         }
       }
     }
-    if (typeof (error as any).response === 'object') {
-      const resp = (error as any).response;
+
+    // Check for response field
+    if (typeof errorObj.response === 'object' && errorObj.response) {
+      const resp = errorObj.response as Record<string, unknown>;
       if (typeof resp.error === 'string' && resp.error.trim()) return resp.error;
       if (typeof resp.message === 'string' && resp.message.trim()) return resp.message;
     }
+
+    // Check for message and error fields
+    if (typeof errorObj.message === 'string') return errorObj.message;
+    if (typeof errorObj.error === 'string') return errorObj.error;
   }
-  if (typeof error === 'string') return error;
-  if (error?.message) return error.message;
-  if (error?.error) return error.error;
+
   return 'Unexpected error';
 };
 

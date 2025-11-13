@@ -2,15 +2,11 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
-  KeyboardAvoidingView,
-  Modal,
-  Platform,
   Pressable,
   RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
-  TextInput,
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -28,11 +24,10 @@ import { deleteEventStagedInventoryForEvent, deleteEventStagedInventoryItem } fr
 import { removeItemImage } from '@/lib/itemImages';
 import { createEvent, updateEventRecord, deleteEventRecord } from '@/lib/events';
 import { StagedInventoryModal } from '@/components/StagedInventoryModal';
+import { EventModal, TaskModal, EventCard } from '@/components/events';
 import type { EventStagedInventoryItem } from '@/types/inventory';
 import { formatCurrencyFromCents } from '@/utils/currency';
-import { formatDateLabel, formatEventRange, getEventPhase, isFutureEvent, sortEventsByDate } from '@/utils/dates';
-
-const MONTH_LABELS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+import { formatEventRange } from '@/utils/dates';
 const FREE_PLAN_EVENT_LIMIT = 1;
 
 export default function HomeScreen() {
@@ -136,11 +131,8 @@ export default function HomeScreen() {
   const [eventEndDate, setEventEndDate] = useState<Date | null>(null);
   const [eventLocation, setEventLocation] = useState('');
   const [eventNotes, setEventNotes] = useState('');
-  const [datePickerVisible, setDatePickerVisible] = useState(false);
-  const [datePickerType, setDatePickerType] = useState<'start' | 'end' | null>(null);
-  const [pickerYear, setPickerYear] = useState(new Date().getFullYear());
-  const [pickerMonth, setPickerMonth] = useState(new Date().getMonth());
   const [editingEventId, setEditingEventId] = useState<string | null>(null);
+  const [savingEvent, setSavingEvent] = useState(false);
   const [taskModalVisible, setTaskModalVisible] = useState(false);
   const [taskModalEventId, setTaskModalEventId] = useState<string | null>(null);
   const [taskTitle, setTaskTitle] = useState('');
@@ -162,10 +154,6 @@ export default function HomeScreen() {
     return 'post';
   }, [events]);
 
-  const getEventPhaseForEventForEvent = useCallback((event: EventRecord): 'prep' | 'live' | 'post' => {
-    return getEventPhaseForEvent(event.startDateISO, event.endDateISO);
-  }, []);
-
   const handleRefresh = useCallback(() => {
     void refreshOrders();
     void refreshInventory();
@@ -182,49 +170,6 @@ export default function HomeScreen() {
     }, [ownerUserId, refreshEvents, refreshStaged]),
   );
 
-  const openDatePicker = useCallback(
-    (type: 'start' | 'end') => {
-      const baseDate =
-        type === 'start'
-          ? eventStartDate ?? new Date()
-          : eventEndDate ?? eventStartDate ?? new Date();
-      setPickerYear(baseDate.getFullYear());
-      setPickerMonth(baseDate.getMonth());
-      setDatePickerType(type);
-      setDatePickerVisible(true);
-    },
-    [eventEndDate, eventStartDate],
-  );
-
-  const handleSelectDate = useCallback(
-    (day: number) => {
-      const selected = new Date(pickerYear, pickerMonth, day);
-      if (Number.isNaN(selected.getTime())) {
-        setDatePickerVisible(false);
-        return;
-      }
-      if (datePickerType === 'start') {
-        setEventStartDate(selected);
-        if (!eventEndDate || selected.getTime() > eventEndDate.getTime()) {
-          setEventEndDate(selected);
-        }
-      } else if (datePickerType === 'end') {
-        setEventEndDate(selected);
-      }
-      setDatePickerVisible(false);
-      setDatePickerType(null);
-    },
-    [datePickerType, eventEndDate, pickerMonth, pickerYear],
-  );
-
-  const handleAdjustYear = useCallback((delta: number) => {
-    setPickerYear((prev) => prev + delta);
-  }, []);
-
-  const handleSelectMonth = useCallback((monthIndex: number) => {
-    setPickerMonth(monthIndex);
-  }, []);
-
   const resetEventForm = useCallback(() => {
     setEditingEventId(null);
     setEventName('');
@@ -232,11 +177,6 @@ export default function HomeScreen() {
     setEventEndDate(null);
     setEventLocation('');
     setEventNotes('');
-    setDatePickerVisible(false);
-    setDatePickerType(null);
-    const today = new Date();
-    setPickerYear(today.getFullYear());
-    setPickerMonth(today.getMonth());
   }, []);
 
   const handleOpenEventModal = useCallback(() => {
@@ -264,11 +204,6 @@ export default function HomeScreen() {
     setEventEndDate(parsedEnd ?? parsedStart ?? null);
     setEventLocation(event.location ?? '');
     setEventNotes(event.notes ?? '');
-    const base = parsedStart ?? new Date();
-    setPickerYear(base.getFullYear());
-    setPickerMonth(base.getMonth());
-    setDatePickerVisible(false);
-    setDatePickerType(null);
     setEventModalVisible(true);
   }, []);
 
@@ -337,16 +272,6 @@ export default function HomeScreen() {
     setTaskTitle('');
   }, [events, ownerUserId, setEvents, taskModalEventId, taskPhase, taskTitle]);
 
-  const daysInMonth = useMemo(() => {
-    return new Date(pickerYear, pickerMonth + 1, 0).getDate();
-  }, [pickerMonth, pickerYear]);
-
-  const selectedDayForPicker = useMemo(() => {
-    const activeDate = datePickerType === 'start' ? eventStartDate : eventEndDate;
-    if (!activeDate) return null;
-    if (activeDate.getFullYear() !== pickerYear || activeDate.getMonth() !== pickerMonth) return null;
-    return activeDate.getDate();
-  }, [datePickerType, eventEndDate, eventStartDate, pickerMonth, pickerYear]);
 
   const handleSaveEvent = useCallback(async () => {
     if (!eventName.trim()) {
@@ -358,14 +283,17 @@ export default function HomeScreen() {
       return;
     }
 
+    setSavingEvent(true);
     const endDateValue = eventEndDate ?? eventStartDate;
     if (endDateValue.getTime() < eventStartDate.getTime()) {
-      Alert.alert('Add event', 'End date can’t be earlier than the start date.');
+      Alert.alert('Add event', "End date can't be earlier than the start date.");
+      setSavingEvent(false);
       return;
     }
 
     if (!ownerUserId) {
       Alert.alert('Add event', 'Session owner not available yet.');
+      setSavingEvent(false);
       return;
     }
 
@@ -381,6 +309,7 @@ export default function HomeScreen() {
         'Plan limit reached',
         `The free plan lets you plan up to ${futureEventLimit} future event${futureEventLimit === 1 ? '' : 's'}.`,
       );
+      setSavingEvent(false);
       return;
     }
 
@@ -418,10 +347,12 @@ export default function HomeScreen() {
           ),
         );
       }
+      setSavingEvent(false);
       handleCloseEventModal();
     } catch (error) {
       console.error('Failed to save event', error);
       Alert.alert('Add event', 'Unable to save this event right now.');
+      setSavingEvent(false);
     }
   }, [
     defaultChecklist,
@@ -437,6 +368,10 @@ export default function HomeScreen() {
     ownerUserId,
     setEvents,
   ]);
+
+  const handleCloseStagedModal = useCallback(() => {
+    setStagedModalEventId(null);
+  }, []);
 
   const handleRemoveEvent = useCallback(
     (eventId: string) => {
@@ -501,10 +436,6 @@ export default function HomeScreen() {
       priceCents: item.priceCents ?? null,
     }));
   }, [stagedByEvent, stagedModalEventId]);
-
-  const handleCloseStagedModal = useCallback(() => {
-    setStagedModalEventId(null);
-  }, []);
 
   const handleRemoveStagedInventoryById = useCallback(
     (eventId: string, stagedId: string) => {
@@ -875,116 +806,23 @@ export default function HomeScreen() {
               <Text style={[styles.sectionTitle, { color: theme.colors.textPrimary, marginBottom: 12 }]}>Event prep</Text>
               {events.map((event) => {
                 const expanded = expandedEvents[event.id] ?? false;
-                const eventPhase = getEventPhaseForEvent(event);
-                const phaseLabel =
-                  eventPhase === 'prep' ? 'Prep tasks' : eventPhase === 'live' ? 'Live tasks' : 'Wrap-up tasks';
-                const filteredChecklist = (event.checklist ?? []).filter((item) => item.phase === eventPhase);
-                const remainingCount = (event.checklist ?? []).filter((item) => item.phase !== eventPhase).length;
-
                 return (
-                  <View key={`${event.id}-prep`} style={styles.prepCard}>
-                    <Pressable
-                      onPress={() =>
-                        setExpandedEvents((prev) => ({
-                          ...prev,
-                          [event.id]: !(prev[event.id] ?? false),
-                        }))
-                      }
-                      style={({ pressed }) => [
-                        styles.prepHeader,
-                        {
-                          opacity: pressed ? 0.85 : 1,
-                        },
-                      ]}
-                    >
-                      <View style={{ flex: 1 }}>
-                        <Text style={[styles.prepTitle, { color: theme.colors.textPrimary }]}>{event.name}</Text>
-                        <Text style={{ color: theme.colors.textSecondary }}>
-                          {formatEventRange(event.startDateISO, event.endDateISO)}
-                        </Text>
-                      </View>
-                      <View style={styles.prepHeaderActions}>
-                        <Feather
-                          name={expanded ? 'chevron-up' : 'chevron-down'}
-                          size={18}
-                          color={theme.colors.textSecondary}
-                        />
-                        <Pressable onPress={() => handleEditEvent(event)} hitSlop={10}>
-                          <Feather name="edit-2" size={16} color={theme.colors.primary} />
-                        </Pressable>
-                        <Pressable onPress={() => handleRemoveEvent(event.id)} hitSlop={10}>
-                          <Feather name="trash-2" size={16} color={theme.colors.error} />
-                        </Pressable>
-                      </View>
-                    </Pressable>
-
-                    {expanded ? (
-                      <>
-                        <Text style={{ color: theme.colors.textMuted, fontSize: 12, marginBottom: 8 }}>{phaseLabel}</Text>
-                        {filteredChecklist.length ? (
-                          <View style={{ gap: 8 }}>
-                            {filteredChecklist.map((item) => (
-                              <Pressable
-                                key={item.id}
-                                onPress={() => handleToggleChecklistItem(event.id, item.id, !item.done)}
-                                style={({ pressed }) => [
-                                  styles.checklistRow,
-                                  {
-                                    opacity: pressed ? 0.8 : 1,
-                                  },
-                                ]}
-                              >
-                                <View
-                                  style={[
-                                    styles.checkbox,
-                                    {
-                                      borderColor: item.done ? theme.colors.primary : theme.colors.border,
-                                      backgroundColor: item.done ? theme.colors.primary : 'transparent',
-                                    },
-                                  ]}
-                                >
-                                  {item.done ? <Feather name="check" size={12} color={theme.colors.surface} /> : null}
-                                </View>
-                                <View style={{ flex: 1 }}>
-                                  <Text
-                                    style={{
-                                      color: item.done ? theme.colors.textMuted : theme.colors.textPrimary,
-                                      textDecorationLine: item.done ? 'line-through' : 'none',
-                                    }}
-                                  >
-                                    {item.title}
-                                  </Text>
-                                  <Text style={{ color: theme.colors.textSecondary, fontSize: 12 }}>
-                                    Tap to mark as {item.done ? 'incomplete' : 'done'}
-                                  </Text>
-                                </View>
-                              </Pressable>
-                            ))}
-                          </View>
-                        ) : (
-                          <Text style={{ color: theme.colors.textSecondary }}>No tasks for this phase yet.</Text>
-                        )}
-                        {remainingCount ? (
-                          <Text style={{ color: theme.colors.textMuted, fontSize: 12 }}>
-                            {remainingCount} task{remainingCount === 1 ? '' : 's'} saved for other phases.
-                          </Text>
-                        ) : null}
-                        <Pressable
-                          onPress={() => openTaskModal(event.id, eventPhase)}
-                          style={({ pressed }) => [
-                            styles.addTaskButton,
-                            {
-                              borderColor: theme.colors.border,
-                              opacity: pressed ? 0.85 : 1,
-                            },
-                          ]}
-                        >
-                          <Feather name="plus" size={14} color={theme.colors.textPrimary} style={{ marginRight: 8 }} />
-                          <Text style={{ color: theme.colors.textPrimary, fontSize: 13 }}>Add task</Text>
-                        </Pressable>
-                      </>
-                    ) : null}
-                  </View>
+                  <EventCard
+                    key={event.id}
+                    event={event}
+                    expanded={expanded}
+                    onToggleExpanded={() =>
+                      setExpandedEvents((prev) => ({
+                        ...prev,
+                        [event.id]: !(prev[event.id] ?? false),
+                      }))
+                    }
+                    onEdit={handleEditEvent}
+                    onRemove={handleRemoveEvent}
+                    onToggleChecklistItem={handleToggleChecklistItem}
+                    onAddTask={openTaskModal}
+                    theme={theme}
+                  />
                 );
               })}
             </View>
@@ -992,326 +830,39 @@ export default function HomeScreen() {
         </View>
       </ScrollView>
 
-      <Modal
+      <EventModal
         visible={eventModalVisible}
-        animationType="slide"
-        presentationStyle="pageSheet"
-        onRequestClose={() => {
-          if (datePickerVisible) {
-            setDatePickerVisible(false);
-            setDatePickerType(null);
-            return;
-          }
-          handleCloseEventModal();
-        }}
-      >
-        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.modalKeyboardAvoid}>
-          <View style={styles.modalOverlay}>
-            <View style={[styles.fullModalCard, { backgroundColor: theme.colors.background }]}>
-              <SafeAreaView edges={['top']} style={[styles.fullModalSafeArea, { backgroundColor: theme.colors.background }]}>
-                <View style={[styles.fullModalHeader, { borderBottomColor: theme.colors.border }]}>
-                  <Text style={[styles.modalTitle, { color: theme.colors.textPrimary }]}>
-                    {editingEventId ? 'Edit event' : 'Add event'}
-                  </Text>
-                  <Pressable
-                    onPress={handleCloseEventModal}
-                    hitSlop={12}
-                    style={({ pressed }) => ({
-                      padding: 8,
-                      borderRadius: 20,
-                      backgroundColor: pressed ? 'rgba(0,0,0,0.05)' : 'transparent',
-                    })}
-                  >
-                    <Feather name="x" size={24} color={theme.colors.textMuted} />
-                  </Pressable>
-                </View>
-              </SafeAreaView>
-              <ScrollView
-                style={styles.fullModalContent}
-                contentContainerStyle={styles.fullModalContentContainer}
-                keyboardShouldPersistTaps="handled"
-              >
-                <View style={styles.modalField}>
-                  <Text style={{ color: theme.colors.textSecondary, marginBottom: 4 }}>Name</Text>
-                  <TextInput
-                    value={eventName}
-                    onChangeText={setEventName}
-                    placeholder="GemCon 2025"
-                    placeholderTextColor={theme.colors.textMuted}
-                    style={[styles.modalInput, { borderColor: theme.colors.border, color: theme.colors.textPrimary }]}
-                    returnKeyType="next"
-                    blurOnSubmit={false}
-                  />
-                </View>
-                <View style={styles.modalField}>
-                  <Text style={{ color: theme.colors.textSecondary, marginBottom: 4 }}>Start date</Text>
-                  <Pressable
-                    onPress={() => openDatePicker('start')}
-                    style={({ pressed }) => [
-                      styles.modalInput,
-                      styles.dateInput,
-                      {
-                        borderColor: theme.colors.border,
-                        backgroundColor: pressed ? 'rgba(0,0,0,0.04)' : 'transparent',
-                      },
-                    ]}
-                  >
-                    <Text style={{ color: eventStartDate ? theme.colors.textPrimary : theme.colors.textMuted }}>
-                      {formatDateLabel(eventStartDate)}
-                    </Text>
-                  </Pressable>
-                </View>
-                <View style={styles.modalField}>
-                  <Text style={{ color: theme.colors.textSecondary, marginBottom: 4 }}>End date</Text>
-                  <Pressable
-                    onPress={() => openDatePicker('end')}
-                    style={({ pressed }) => [
-                      styles.modalInput,
-                      styles.dateInput,
-                      {
-                        borderColor: theme.colors.border,
-                        backgroundColor: pressed ? 'rgba(0,0,0,0.04)' : 'transparent',
-                      },
-                    ]}
-                  >
-                    <Text style={{ color: eventEndDate ? theme.colors.textPrimary : theme.colors.textMuted }}>
-                      {formatDateLabel(eventEndDate ?? eventStartDate)}
-                    </Text>
-                  </Pressable>
-                </View>
-                <View style={styles.modalField}>
-                  <Text style={{ color: theme.colors.textSecondary, marginBottom: 4 }}>Location (optional)</Text>
-                  <TextInput
-                    value={eventLocation}
-                    onChangeText={setEventLocation}
-                    placeholder="Austin Convention Center"
-                    placeholderTextColor={theme.colors.textMuted}
-                    style={[styles.modalInput, { borderColor: theme.colors.border, color: theme.colors.textPrimary }]}
-                    returnKeyType="done"
-                  />
-                </View>
-                <View style={styles.modalField}>
-                  <Text style={{ color: theme.colors.textSecondary, marginBottom: 4 }}>Notes (optional)</Text>
-                  <TextInput
-                    value={eventNotes}
-                    onChangeText={setEventNotes}
-                    placeholder="Need extra signage"
-                    placeholderTextColor={theme.colors.textMuted}
-                    style={[
-                      styles.modalInput,
-                      styles.notesInput,
-                      {
-                        borderColor: theme.colors.border,
-                        color: theme.colors.textPrimary,
-                      },
-                    ]}
-                    multiline
-                  />
-                </View>
-              </ScrollView>
-              <SafeAreaView edges={['bottom']} style={[styles.fullModalFooterSafeArea, { backgroundColor: theme.colors.background, borderTopColor: theme.colors.border }]}>
-                <Pressable
-                  onPress={handleSaveEvent}
-                  style={({ pressed }) => [
-                    styles.modalPrimary,
-                    {
-                      backgroundColor: theme.colors.primary,
-                      opacity: pressed ? 0.85 : 1,
-                    },
-                  ]}
-                >
-                  <Text style={[styles.modalPrimaryText, { color: theme.colors.surface }]}>
-                    {editingEventId ? 'Save changes' : 'Save event'}
-                  </Text>
-                </Pressable>
-              </SafeAreaView>
-            </View>
+        isEditing={!!editingEventId}
+        eventName={eventName}
+        eventStartDate={eventStartDate}
+        eventEndDate={eventEndDate}
+        eventLocation={eventLocation}
+        eventNotes={eventNotes}
+        onChangeName={setEventName}
+        onChangeStartDate={setEventStartDate}
+        onChangeEndDate={setEventEndDate}
+        onChangeLocation={setEventLocation}
+        onChangeNotes={setEventNotes}
+        onSave={handleSaveEvent}
+        onClose={handleCloseEventModal}
+        theme={theme}
+        isSaving={savingEvent}
+      />
 
-            {datePickerVisible ? (
-              <View style={styles.datePickerOverlay}>
-                <Pressable
-                  style={styles.datePickerBackdrop}
-                  onPress={() => {
-                    setDatePickerVisible(false);
-                    setDatePickerType(null);
-                  }}
-                />
-                <View style={[styles.datePickerCard, { backgroundColor: theme.colors.surface }]}
-                >
-                  <View style={styles.datePickerHeader}>
-                    <Pressable onPress={() => handleAdjustYear(-1)} hitSlop={10}>
-                      <Feather name="chevron-left" size={18} color={theme.colors.textPrimary} />
-                    </Pressable>
-                    <Text style={[styles.datePickerYear, { color: theme.colors.textPrimary }]}>{pickerYear}</Text>
-                    <Pressable onPress={() => handleAdjustYear(1)} hitSlop={10}>
-                      <Feather name="chevron-right" size={18} color={theme.colors.textPrimary} />
-                    </Pressable>
-                  </View>
-                  <View style={styles.monthSelectorRow}>
-                    {MONTH_LABELS.map((label, index) => {
-                      const active = pickerMonth === index;
-                      return (
-                        <Pressable
-                          key={label}
-                          onPress={() => handleSelectMonth(index)}
-                          style={({ pressed }) => [
-                            styles.monthChip,
-                            {
-                              backgroundColor: active ? theme.colors.primary : 'transparent',
-                              borderColor: active ? theme.colors.primary : theme.colors.border,
-                              opacity: pressed ? 0.85 : 1,
-                            },
-                          ]}
-                        >
-                          <Text
-                            style={{
-                              color: active ? theme.colors.surface : theme.colors.textPrimary,
-                              fontWeight: active ? '600' : '500',
-                            }}
-                          >
-                            {label}
-                          </Text>
-                        </Pressable>
-                      );
-                    })}
-                  </View>
-                  <View style={styles.dayGrid}>
-                    {Array.from({ length: daysInMonth }, (_, index) => {
-                      const day = index + 1;
-                      const active = selectedDayForPicker === day;
-                      return (
-                        <Pressable
-                          key={day}
-                          onPress={() => handleSelectDate(day)}
-                          style={({ pressed }) => [
-                            styles.dayButton,
-                            {
-                              backgroundColor: active ? theme.colors.primary : 'transparent',
-                              borderColor: active ? theme.colors.primary : theme.colors.border,
-                              opacity: pressed ? 0.8 : 1,
-                            },
-                          ]}
-                        >
-                          <Text
-                            style={{
-                              color: active ? theme.colors.surface : theme.colors.textPrimary,
-                              fontWeight: active ? '600' : '500',
-                            }}
-                          >
-                            {day}
-                          </Text>
-                        </Pressable>
-                      );
-                    })}
-                  </View>
-                  <Pressable
-                    onPress={() => {
-                      setDatePickerVisible(false);
-                      setDatePickerType(null);
-                    }}
-                    style={({ pressed }) => [
-                      styles.datePickerCancel,
-                      {
-                        opacity: pressed ? 0.8 : 1,
-                        borderColor: theme.colors.border,
-                      },
-                    ]}
-                  >
-                    <Text style={{ color: theme.colors.textSecondary }}>Cancel</Text>
-                  </Pressable>
-                </View>
-              </View>
-            ) : null}
-          </View>
-        </KeyboardAvoidingView>
-      </Modal>
-
-      <Modal
+      <TaskModal
         visible={taskModalVisible}
-        transparent
-        animationType="fade"
-        onRequestClose={() => {
+        taskTitle={taskTitle}
+        taskPhase={taskPhase}
+        onChangeTitle={setTaskTitle}
+        onChangePhase={setTaskPhase}
+        onSave={handleSaveTask}
+        onClose={() => {
           setTaskModalVisible(false);
           setTaskModalEventId(null);
           setTaskTitle('');
         }}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={[styles.modalCard, { backgroundColor: theme.colors.surface }]}
-          >
-            <View style={styles.modalHeader}>
-              <Text style={[styles.modalTitle, { color: theme.colors.textPrimary }]}>Add event task</Text>
-              <Pressable
-                onPress={() => {
-                  setTaskModalVisible(false);
-                  setTaskModalEventId(null);
-                  setTaskTitle('');
-                }}
-                hitSlop={12}
-              >
-                <Feather name="x" size={18} color={theme.colors.textMuted} />
-              </Pressable>
-            </View>
-
-            <View style={styles.modalField}>
-              <Text style={{ color: theme.colors.textSecondary, marginBottom: 4 }}>Task</Text>
-              <TextInput
-                value={taskTitle}
-                onChangeText={setTaskTitle}
-                placeholder="Bring extra tablecloth"
-                placeholderTextColor={theme.colors.textMuted}
-                style={[styles.modalInput, { borderColor: theme.colors.border, color: theme.colors.textPrimary }]}
-              />
-            </View>
-
-            <View style={styles.modalField}>
-              <Text style={{ color: theme.colors.textSecondary, marginBottom: 4 }}>Phase</Text>
-              <View style={styles.phaseToggleRow}>
-                {(['prep', 'live', 'post'] as const).map((option) => {
-                  const active = taskPhase === option;
-                  const label = option === 'prep' ? 'Prep' : option === 'live' ? 'Live' : 'Wrap-up';
-                  return (
-                    <Pressable
-                      key={option}
-                      onPress={() => setTaskPhase(option)}
-                      style={({ pressed }) => [
-                        styles.phaseToggleChip,
-                        {
-                          backgroundColor: active ? theme.colors.primary : 'transparent',
-                          borderColor: active ? theme.colors.primary : theme.colors.border,
-                          opacity: pressed ? 0.85 : 1,
-                        },
-                      ]}
-                    >
-                      <Text
-                        style={{
-                          color: active ? theme.colors.surface : theme.colors.textPrimary,
-                          fontWeight: active ? '600' : '500',
-                        }}
-                      >
-                        {label}
-                      </Text>
-                    </Pressable>
-                  );
-                })}
-              </View>
-            </View>
-
-            <Pressable
-              onPress={handleSaveTask}
-              style={({ pressed }) => [
-                styles.modalPrimary,
-                {
-                  backgroundColor: theme.colors.primary,
-                  opacity: pressed ? 0.85 : 1,
-                },
-              ]}
-            >
-              <Text style={[styles.modalPrimaryText, { color: theme.colors.surface }]}>Save task</Text>
-            </Pressable>
-          </View>
-        </View>
-      </Modal>
+        theme={theme}
+      />
 
       <StagedInventoryModal
         visible={Boolean(stagedModalEventId)}
@@ -1391,21 +942,6 @@ const styles = StyleSheet.create({
     padding: 16,
     gap: 16,
     alignSelf: 'stretch',
-  },
-  prepCard: {
-    borderWidth: 1,
-    borderRadius: 12,
-    padding: 12,
-    gap: 12,
-  },
-  prepHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  prepTitle: {
-    fontSize: 16,
-    fontWeight: '600',
   },
   sectionHeader: {
     flexDirection: 'row',
@@ -1493,11 +1029,6 @@ const styles = StyleSheet.create({
     fontStyle: 'italic',
     marginTop: 4,
   },
-  prepHeaderActions: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-  },
   stagedViewButton: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1557,175 +1088,6 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderRadius: 12,
     padding: 12,
-  },
-  addTaskButton: {
-    marginTop: 12,
-    borderWidth: 1,
-    borderRadius: 12,
-    paddingVertical: 10,
-    paddingHorizontal: 12,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  phaseToggleRow: {
-    flexDirection: 'row',
-    gap: 8,
-  },
-  phaseToggleChip: {
-    borderWidth: 1,
-    borderRadius: 999,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-  },
-  checklistRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-  },
-  checkbox: {
-    width: 20,
-    height: 20,
-    borderWidth: 2,
-    borderRadius: 6,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  datePickerCard: {
-    borderRadius: 16,
-    padding: 20,
-    gap: 16,
-    width: '100%',
-    zIndex: 1,
-  },
-  datePickerHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  datePickerYear: {
-    fontSize: 18,
-    fontWeight: '700',
-  },
-  monthSelectorRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-  },
-  monthChip: {
-    borderWidth: 1,
-    borderRadius: 999,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-  },
-  dayGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-  },
-  dayButton: {
-    width: 44,
-    height: 44,
-    borderWidth: 1,
-    borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  datePickerCancel: {
-    borderWidth: 1,
-    borderRadius: 12,
-    paddingVertical: 10,
-    alignItems: 'center',
-  },
-  modalKeyboardAvoid: {
-    flex: 1,
-  },
-  modalOverlay: {
-    flex: 1,
-  },
-  fullModalCard: {
-    flex: 1,
-  },
-  fullModalSafeArea: {
-    // Background color set dynamically via theme
-  },
-  fullModalHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: 20,
-    paddingVertical: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: 'rgba(0,0,0,0.08)',
-  },
-  fullModalContent: {
-    flex: 1,
-  },
-  fullModalContentContainer: {
-    padding: 20,
-    paddingBottom: 40,
-  },
-  fullModalFooterSafeArea: {
-    paddingHorizontal: 20,
-    paddingTop: 12,
-    paddingBottom: 20,
-    borderTopWidth: 1,
-    borderTopColor: 'rgba(0,0,0,0.08)',
-  },
-  datePickerOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(9, 10, 15, 0.45)',
-    justifyContent: 'center',
-    padding: 20,
-  },
-  datePickerBackdrop: {
-    ...StyleSheet.absoluteFillObject,
-  },
-  modalCard: {
-    borderRadius: 16,
-    padding: 20,
-    gap: 16,
-  },
-  modalHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  modalTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-  },
-  modalField: {
-    gap: 8,
-    marginBottom: 8,
-  },
-  modalInput: {
-    borderWidth: 1,
-    borderRadius: 12,
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    fontSize: 16,
-    minHeight: 52,
-  },
-  dateInput: {
-    justifyContent: 'center',
-    minHeight: 52,
-  },
-  notesInput: {
-    minHeight: 100,
-    textAlignVertical: 'top',
-    paddingTop: 14,
-  },
-  modalPrimary: {
-    borderRadius: 12,
-    paddingVertical: 16,
-    alignItems: 'center',
-    minHeight: 52,
-    justifyContent: 'center',
-  },
-  modalPrimaryText: {
-    fontSize: 16,
-    fontWeight: '600',
   },
   loadingOverlay: {
     position: 'absolute',

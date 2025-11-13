@@ -1,11 +1,8 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
-  Image,
-  KeyboardTypeOptions,
   Linking,
-  Pressable,
   ScrollView,
   Share,
   StyleSheet,
@@ -14,22 +11,20 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
-import * as ImagePicker from 'expo-image-picker';
 
 import {
   PrimaryButton,
   SecondaryButton,
-  InputField,
   SectionHeading,
   FeedbackBanner,
   type FeedbackState,
-  type InputFieldProps,
 } from '@/components/common';
 import { SessionManagementSection } from '@/components/settings/SessionManagementSection';
+import { ProfileSection } from '@/components/settings/ProfileSection';
+import { PasswordSection } from '@/components/settings/PasswordSection';
+import { PaymentSettingsSection } from '@/components/settings/PaymentSettingsSection';
 import { useSubscriptionPlans } from '@/hooks/useSubscriptionPlans';
 import { startCheckoutSession, openBillingPortal } from '@/lib/billing';
-import { updateProfile } from '@/lib/profile';
-import { deleteUserSetting, fetchUserSettings, setUserSetting } from '@/lib/settings';
 import { pauseSubscription, resumeSubscription } from '@/lib/subscriptions';
 import { supabase } from '@/lib/supabase';
 import { useSession, SESSION_CODE_LENGTH } from '@/providers/SessionProvider';
@@ -37,48 +32,10 @@ import { useSupabaseAuth } from '@/providers/SupabaseAuthProvider';
 import { useTheme } from '@/providers/ThemeProvider';
 import { formatCurrencyFromCents } from '@/utils/currency';
 import type { SubscriptionPlan } from '@/types/auth';
+import { getErrorMessage } from '@/types/database';
 import { enforceFreePlanLimits, FREE_PLAN_ITEM_LIMIT } from '@/lib/freePlanLimits';
 import { PAUSE_ALREADY_USED_MESSAGE } from '@/utils/pauseErrors';
 
-
-type PaymentField = 'squareLink' | 'venmoUsername' | 'cashAppTag' | 'paypalQrUri';
-
-type PaymentValues = Record<PaymentField, string>;
-
-type PaymentFieldConfig = {
-  field: PaymentField;
-  label: string;
-  placeholder: string;
-  keyboardType?: KeyboardTypeOptions;
-};
-
-const PAYMENT_FIELDS: PaymentField[] = ['squareLink', 'venmoUsername', 'cashAppTag', 'paypalQrUri'];
-
-const PAYMENT_CONFIG: PaymentFieldConfig[] = [
-  {
-    field: 'squareLink',
-    label: 'Square checkout link',
-    placeholder: 'https://square.link/...',
-    keyboardType: 'url',
-  },
-  {
-    field: 'venmoUsername',
-    label: 'Venmo username',
-    placeholder: '@yourname',
-  },
-  {
-    field: 'cashAppTag',
-    label: 'Cash App tag',
-    placeholder: '$yourtag',
-  },
-];
-
-const DEFAULT_PAYMENT_VALUES: PaymentValues = {
-  squareLink: '',
-  venmoUsername: '',
-  cashAppTag: '',
-  paypalQrUri: '',
-};
 
 type PendingJoinRequest = {
   id: string;
@@ -86,7 +43,7 @@ type PendingJoinRequest = {
   participantName: string;
   participantEmail: string;
   requestedAt: string;
-  deviceId: string | null;
+  deviceId: string | undefined;
 };
 
 type SecurityOverview = {
@@ -94,7 +51,7 @@ type SecurityOverview = {
   pendingRequests: number;
   recentFailedAttempts: number;
   recentRateLimited: number;
-  lastFailedAttempt: string | null;
+  lastFailedAttempt: string | undefined;
 };
 
 const FALLBACK_PRO_PLAN: SubscriptionPlan = {
@@ -143,21 +100,6 @@ function formatJoinCodeInput(value: string): string {
   const cleaned = stripJoinCodeFormatting(value).slice(0, SESSION_CODE_LENGTH);
   const matcher = cleaned.match(new RegExp(`.{1,${SESSION_CODE_GROUP_SIZE}}`, 'g'));
   return matcher ? matcher.join('-') : cleaned;
-}
-
-function formatRelativeTime(dateIso: string): string {
-  const timestamp = new Date(dateIso);
-  if (Number.isNaN(timestamp.getTime())) {
-    return '';
-  }
-  const diffMs = Date.now() - timestamp.getTime();
-  const diffMinutes = Math.max(0, Math.floor(diffMs / (1000 * 60)));
-  if (diffMinutes < 1) return 'just now';
-  if (diffMinutes < 60) return `${diffMinutes} minute${diffMinutes === 1 ? '' : 's'} ago`;
-  const diffHours = Math.floor(diffMinutes / 60);
-  if (diffHours < 24) return `${diffHours} hour${diffHours === 1 ? '' : 's'} ago`;
-  const diffDays = Math.floor(diffHours / 24);
-  return `${diffDays} day${diffDays === 1 ? '' : 's'} ago`;
 }
 
 function formatPlanPrice(plan: SubscriptionPlan): string {
@@ -213,15 +155,7 @@ export default function SettingsScreen() {
     [plansData],
   );
 
-  const [fullName, setFullName] = useState(user?.profile?.fullName ?? '');
-  const [phone, setPhone] = useState(user?.profile?.phone ?? '');
-  const [newPassword, setNewPassword] = useState('');
-  const [confirmPassword, setConfirmPassword] = useState('');
-  const [savingProfile, setSavingProfile] = useState(false);
-  const [updatingPasswordState, setUpdatingPasswordState] = useState(false);
   const [refreshingAccount, setRefreshingAccount] = useState(false);
-  const [savingPayments, setSavingPayments] = useState(false);
-  const [loadingPayments, setLoadingPayments] = useState(false);
   const [clearingSession, setClearingSession] = useState(false);
   const [creatingSession, setCreatingSession] = useState(false);
   const [joiningSession, setJoiningSession] = useState(false);
@@ -234,19 +168,11 @@ export default function SettingsScreen() {
   const [loadingSecurityOverview, setLoadingSecurityOverview] = useState(false);
   const [resolvingRequest, setResolvingRequest] = useState<{ id: string; mode: 'approve' | 'deny' } | null>(null);
   const [feedback, setFeedback] = useState<FeedbackState>(null);
-  const [paymentValues, setPaymentValues] = useState<PaymentValues>(DEFAULT_PAYMENT_VALUES);
-  const [initialPaymentValues, setInitialPaymentValues] = useState<PaymentValues>(DEFAULT_PAYMENT_VALUES);
   const [showJoinForm, setShowJoinForm] = useState(false);
   const [launchingCheckout, setLaunchingCheckout] = useState(false);
   const [checkoutPlanTier, setCheckoutPlanTier] = useState<string | null>(null);
   const [openingBillingPortal, setOpeningBillingPortal] = useState(false);
   const [managingPause, setManagingPause] = useState(false);
-  const [uploadingPaypalQr, setUploadingPaypalQr] = useState(false);
-
-  useEffect(() => {
-    setFullName(user?.profile?.fullName ?? '');
-    setPhone(user?.profile?.phone ?? '');
-  }, [user?.profile?.fullName, user?.profile?.phone]);
 
   useEffect(() => {
     let timeout: ReturnType<typeof setTimeout> | undefined;
@@ -257,43 +183,6 @@ export default function SettingsScreen() {
       if (timeout) clearTimeout(timeout);
     };
   }, [feedback]);
-
-  useEffect(() => {
-    if (!user?.id) {
-      setPaymentValues(DEFAULT_PAYMENT_VALUES);
-      setInitialPaymentValues(DEFAULT_PAYMENT_VALUES);
-      setLoadingPayments(false);
-      return;
-    }
-
-    let isCancelled = false;
-    setLoadingPayments(true);
-
-    const loadSettings = async () => {
-      try {
-        const result = await fetchUserSettings(user.id, PAYMENT_FIELDS);
-        if (isCancelled) return;
-        const normalized = PAYMENT_FIELDS.reduce<PaymentValues>((acc, key) => {
-          acc[key] = (result[key] ?? '').trim();
-          return acc;
-        }, { ...DEFAULT_PAYMENT_VALUES });
-        setPaymentValues(normalized);
-        setInitialPaymentValues(normalized);
-      } catch (error: any) {
-        if (isCancelled) return;
-        console.error('Failed to load payment settings', error);
-        setFeedback({ type: 'error', message: error?.message ?? 'Failed to load payment settings.' });
-      } finally {
-        if (!isCancelled) setLoadingPayments(false);
-      }
-    };
-
-    void loadSettings();
-
-    return () => {
-      isCancelled = true;
-    };
-  }, [user?.id]);
 
   const subscription = user?.subscription ?? null;
   const currentPlanTier = subscription?.plan?.tier ?? 'free';
@@ -345,27 +234,10 @@ export default function SettingsScreen() {
   const showPlansSpinner = (plansLoading || plansFetching) && !(plansData && plansData.length);
   const showFreeLimitNotice = currentPlanTier === 'free' || isSubscriptionPaused;
 
-  const profileDirty = useMemo(() => {
-    const initialName = user?.profile?.fullName ?? '';
-    const initialPhone = user?.profile?.phone ?? '';
-    return fullName !== initialName || phone !== initialPhone;
-  }, [fullName, phone, user?.profile?.fullName, user?.profile?.phone]);
-
-  const paymentsDirty = useMemo(
-    () => PAYMENT_FIELDS.some((field) => paymentValues[field] !== initialPaymentValues[field]),
-    [paymentValues, initialPaymentValues],
-  );
-
   const joinCodeReady = useMemo(
     () => stripJoinCodeFormatting(joinCode).length === SESSION_CODE_LENGTH,
     [joinCode],
   );
-
-  const passwordValid = useMemo(() => {
-    if (!newPassword || !confirmPassword) return false;
-    if (newPassword !== confirmPassword) return false;
-    return newPassword.length >= 8;
-  }, [newPassword, confirmPassword]);
 
   const showFeedback = useCallback((state: FeedbackState) => {
     setFeedback(state);
@@ -402,9 +274,9 @@ export default function SettingsScreen() {
         pendingRequests: row.pending_requests ?? 0,
         recentFailedAttempts: row.recent_failed_attempts ?? 0,
         recentRateLimited: row.recent_rate_limited ?? 0,
-        lastFailedAttempt: row.last_failed_attempt ?? null,
+        lastFailedAttempt: row.last_failed_attempt || undefined,
       });
-    } catch (error: any) {
+    } catch (error) {
       console.error('Failed to load security overview', error);
     } finally {
       setLoadingSecurityOverview(false);
@@ -431,14 +303,14 @@ export default function SettingsScreen() {
         participantName: row.participant_name ? String(row.participant_name) : 'Teammate',
         participantEmail: row.participant_email ?? '',
         requestedAt: row.requested_at,
-        deviceId: row.device_id ?? null,
+        deviceId: row.device_id || undefined,
       }));
       setPendingRequests(normalized);
-    } catch (error: any) {
+    } catch (error) {
       console.error('Failed to load pending join requests', error);
       showFeedback({
         type: 'error',
-        message: error?.message ?? 'Failed to load join requests.',
+        message: getErrorMessage(error),
       });
     } finally {
       setLoadingPendingRequests(false);
@@ -478,9 +350,9 @@ export default function SettingsScreen() {
         type: 'success',
         message: `Session created: ${formatSessionCode(session.code)}`,
       });
-    } catch (error: any) {
+    } catch (error) {
       console.error('Failed to create session', error);
-      showFeedback({ type: 'error', message: error?.message ?? 'Failed to create session.' });
+      showFeedback({ type: 'error', message: getErrorMessage(error) });
     } finally {
       setCreatingSession(false);
     }
@@ -680,43 +552,6 @@ export default function SettingsScreen() {
     );
   }, [user?.id, canManagePause, isSubscriptionPaused, pauseAllowanceUsed, applyPauseState]);
 
-  const handleSaveProfile = useCallback(async () => {
-    if (!user?.id) return;
-    setSavingProfile(true);
-    try {
-      await updateProfile(user.id, {
-        fullName: fullName.trim() || null,
-        phone: phone.trim() || null,
-      });
-      await refreshSession();
-      showFeedback({ type: 'success', message: 'Profile updated successfully.' });
-    } catch (error: any) {
-      console.error('Failed to update profile', error);
-      showFeedback({ type: 'error', message: error?.message ?? 'Failed to update profile.' });
-    } finally {
-      setSavingProfile(false);
-    }
-  }, [user?.id, fullName, phone, refreshSession, showFeedback]);
-
-  const handleUpdatePassword = useCallback(async () => {
-    if (!passwordValid) {
-      showFeedback({ type: 'error', message: 'Passwords must match and be at least 8 characters.' });
-      return;
-    }
-    setUpdatingPasswordState(true);
-    try {
-      await updatePassword(newPassword);
-      setNewPassword('');
-      setConfirmPassword('');
-      showFeedback({ type: 'success', message: 'Password updated successfully.' });
-    } catch (error: any) {
-      console.error('Failed to update password', error);
-      showFeedback({ type: 'error', message: error?.message ?? 'Failed to update password.' });
-    } finally {
-      setUpdatingPasswordState(false);
-    }
-  }, [passwordValid, updatePassword, newPassword, showFeedback]);
-
   const handleRefreshSubscription = useCallback(async () => {
     setRefreshingAccount(true);
     try {
@@ -729,93 +564,6 @@ export default function SettingsScreen() {
       setRefreshingAccount(false);
     }
   }, [refreshSession, showFeedback]);
-
-  const handleSavePaymentSettings = useCallback(async () => {
-    if (!user?.id || !paymentsDirty) return;
-    setSavingPayments(true);
-    try {
-      const userId = user.id;
-      const trimmedValues = PAYMENT_FIELDS.reduce<PaymentValues>((acc, field) => {
-        const rawValue = paymentValues[field];
-        acc[field] = field === 'paypalQrUri' ? rawValue : rawValue.trim();
-        return acc;
-      }, { ...DEFAULT_PAYMENT_VALUES });
-
-      const operations = PAYMENT_FIELDS.reduce<Promise<void>[]>((acc, field) => {
-        const value = trimmedValues[field];
-        const initialValue = initialPaymentValues[field].trim();
-        if (value === initialValue) return acc;
-        if (!value) {
-          acc.push(deleteUserSetting(userId, field));
-        } else {
-          acc.push(setUserSetting(userId, field, value));
-        }
-        return acc;
-      }, []);
-
-      if (operations.length) {
-        await Promise.all(operations);
-      }
-
-      setPaymentValues(trimmedValues);
-      setInitialPaymentValues(trimmedValues);
-      showFeedback({ type: 'success', message: 'Payment preferences saved.' });
-    } catch (error: any) {
-      console.error('Failed to save payment settings', error);
-      showFeedback({ type: 'error', message: error?.message ?? 'Failed to save payment settings.' });
-    } finally {
-      setSavingPayments(false);
-    }
-  }, [user?.id, paymentsDirty, paymentValues, initialPaymentValues, showFeedback]);
-
-  const handleSetPaymentField = useCallback((field: PaymentField, value: string) => {
-    setPaymentValues((prev) => ({ ...prev, [field]: value }));
-  }, []);
-
-  const handleUploadPaypalQr = useCallback(async () => {
-    try {
-      setUploadingPaypalQr(true);
-      const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
-      if (!permission.granted) {
-        showFeedback({ type: 'error', message: 'Enable photo access to upload a QR code.' });
-        return;
-      }
-
-      const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ['images'],
-        allowsEditing: true,
-        aspect: [1, 1],
-        quality: 0.9,
-        base64: true,
-      });
-
-      if (result.canceled) {
-        return;
-      }
-
-      const asset = result.assets?.[0];
-      if (!asset?.base64) {
-        showFeedback({ type: 'error', message: 'Unable to process the selected image.' });
-        return;
-      }
-
-      const mimeType =
-        (asset as { mimeType?: string }).mimeType
-        ?? (asset.uri?.toLowerCase().endsWith('.png') ? 'image/png' : 'image/jpeg');
-
-      const dataUrl = `data:${mimeType};base64,${asset.base64}`;
-      setPaymentValues((prev) => ({ ...prev, paypalQrUri: dataUrl }));
-    } catch (error: any) {
-      console.error('Failed to upload PayPal QR', error);
-      showFeedback({ type: 'error', message: error?.message ?? 'Failed to upload QR code.' });
-    } finally {
-      setUploadingPaypalQr(false);
-    }
-  }, [showFeedback]);
-
-  const handleRemovePaypalQr = useCallback(() => {
-    setPaymentValues((prev) => ({ ...prev, paypalQrUri: '' }));
-  }, []);
 
   const handleClearSession = useCallback(async () => {
     if (!currentSession) return;
@@ -922,101 +670,18 @@ export default function SettingsScreen() {
           handleResolveRequest={handleResolveRequest}
         />
 
-        <View style={[styles.card, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }] }>
-          <SectionHeading
-            title="Profile"
-            subtitle="Keep your contact information up to date so your team can reach you."
-            titleColor={theme.colors.textPrimary}
-            subtitleColor={theme.colors.textSecondary}
-          />
+        <ProfileSection
+          theme={theme}
+          user={user ? { ...user, email: user.email ?? null } : null}
+          refreshSession={refreshSession}
+          showFeedback={showFeedback}
+        />
 
-          <View style={styles.inputGroup}>
-            <Text style={[styles.inputLabel, { color: theme.colors.textSecondary }]}>Email</Text>
-            <View style={[styles.readOnlyField, { borderColor: theme.colors.border, backgroundColor: theme.colors.surfaceMuted }]}>
-              <Text style={[styles.readOnlyText, { color: theme.colors.textPrimary }]}>{user.email ?? '—'}</Text>
-            </View>
-          </View>
-
-          <InputField
-            label="Full name"
-            value={fullName}
-            onChange={setFullName}
-            placeholder="Your name"
-            placeholderColor={theme.colors.textMuted}
-            borderColor={theme.colors.border}
-            backgroundColor={theme.colors.surface}
-            textColor={theme.colors.textPrimary}
-            autoCapitalize="words"
-          />
-
-          <InputField
-            label="Phone number"
-            value={phone}
-            onChange={setPhone}
-            placeholder="Mobile number"
-            placeholderColor={theme.colors.textMuted}
-            borderColor={theme.colors.border}
-            backgroundColor={theme.colors.surface}
-            textColor={theme.colors.textPrimary}
-            keyboardType="phone-pad"
-            textContentType="telephoneNumber"
-          />
-
-          <PrimaryButton
-            title="Save profile"
-            onPress={handleSaveProfile}
-            disabled={!profileDirty || savingProfile}
-            loading={savingProfile}
-            backgroundColor={theme.colors.primary}
-            textColor={theme.colors.surface}
-          />
-        </View>
-
-        <View style={[styles.card, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }] }>
-          <SectionHeading
-            title="Password"
-            subtitle="Choose a strong password with at least 8 characters."
-            titleColor={theme.colors.textPrimary}
-            subtitleColor={theme.colors.textSecondary}
-          />
-
-          <InputField
-            label="New password"
-            value={newPassword}
-            onChange={setNewPassword}
-            placeholder="New password"
-            placeholderColor={theme.colors.textMuted}
-            borderColor={theme.colors.border}
-            backgroundColor={theme.colors.surface}
-            textColor={theme.colors.textPrimary}
-            secureTextEntry
-            textContentType="newPassword"
-            autoCapitalize="none"
-          />
-
-          <InputField
-            label="Confirm password"
-            value={confirmPassword}
-            onChange={setConfirmPassword}
-            placeholder="Confirm password"
-            placeholderColor={theme.colors.textMuted}
-            borderColor={theme.colors.border}
-            backgroundColor={theme.colors.surface}
-            textColor={theme.colors.textPrimary}
-            secureTextEntry
-            textContentType="password"
-            autoCapitalize="none"
-          />
-
-          <PrimaryButton
-            title="Update password"
-            onPress={handleUpdatePassword}
-            disabled={!passwordValid || updatingPasswordState}
-            loading={updatingPasswordState}
-            backgroundColor={theme.colors.secondary}
-            textColor={theme.colors.surface}
-          />
-        </View>
+        <PasswordSection
+          theme={theme}
+          updatePassword={updatePassword}
+          showFeedback={showFeedback}
+        />
 
         <View style={[styles.card, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }] }>
           <View style={styles.cardHeaderRow}>
@@ -1138,108 +803,11 @@ export default function SettingsScreen() {
           ) : null}
         </View>
 
-        <View style={[styles.card, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }] }>
-          <SectionHeading
-            title="Payment preferences"
-            subtitle="Store quick links for customers when using your POS."
-            titleColor={theme.colors.textPrimary}
-            subtitleColor={theme.colors.textSecondary}
-          />
-
-          {loadingPayments ? (
-            <View style={styles.loadingRow}>
-              <ActivityIndicator color={theme.colors.primary} />
-              <Text style={[styles.loadingText, { color: theme.colors.textSecondary }]}>Loading payment links…</Text>
-            </View>
-          ) : (
-            <>
-              {PAYMENT_CONFIG.map((config) => (
-                <InputField
-                  key={config.field}
-                  label={config.label}
-                  value={paymentValues[config.field]}
-                  onChange={(value) => handleSetPaymentField(config.field, value)}
-                  placeholder={config.placeholder}
-                  placeholderColor={theme.colors.textMuted}
-                  borderColor={theme.colors.border}
-                  backgroundColor={theme.colors.surface}
-                  textColor={theme.colors.textPrimary}
-                  keyboardType={config.keyboardType}
-                  autoCapitalize="none"
-                />
-              ))}
-
-              <View style={styles.paypalSection}>
-                <Text style={[styles.inputLabel, { color: theme.colors.textSecondary }]}>PayPal QR code</Text>
-                <Text style={[styles.paypalHelpText, { color: theme.colors.textMuted }]}>Upload a QR code image so shoppers can scan and pay with PayPal.</Text>
-                <View
-                  style={[
-                    styles.paypalPreview,
-                    {
-                      borderColor: theme.colors.border,
-                      backgroundColor: theme.colors.surfaceMuted,
-                    },
-                  ]}
-                >
-                  {paymentValues.paypalQrUri ? (
-                    <Image source={{ uri: paymentValues.paypalQrUri }} style={styles.paypalImage} resizeMode="contain" />
-                  ) : (
-                    <Text style={[styles.paypalPlaceholder, { color: theme.colors.textMuted }]}>No QR code uploaded yet.</Text>
-                  )}
-                </View>
-
-                <View style={styles.paypalActions}>
-                <Pressable
-                  onPress={handleUploadPaypalQr}
-                  disabled={uploadingPaypalQr}
-                  style={({ pressed }) => [
-                    styles.paypalUploadButton,
-                    {
-                      borderColor: theme.colors.primary,
-                      backgroundColor: pressed ? theme.colors.primary : 'transparent',
-                    },
-                    uploadingPaypalQr ? { opacity: 0.6 } : null,
-                  ]}
-                >
-                  {uploadingPaypalQr ? (
-                    <ActivityIndicator color={theme.colors.surface} />
-                  ) : (
-                    <>
-                      <Text style={[styles.paypalUploadText, { color: theme.colors.primary }]}>
-                        {paymentValues.paypalQrUri ? 'Replace QR code' : 'Upload QR code'}
-                      </Text>
-                      <Text style={[styles.paypalUploadHint, { color: theme.colors.textMuted }]}>
-                        PNG or JPG, crop before saving.
-                      </Text>
-                    </>
-                  )}
-                </Pressable>
-                {paymentValues.paypalQrUri ? (
-                  <SecondaryButton
-                    style={styles.paypalRemoveButton}
-                    title="Remove QR code"
-                    onPress={handleRemovePaypalQr}
-                    disabled={uploadingPaypalQr}
-                    loading={false}
-                    backgroundColor={theme.colors.surface}
-                    borderColor={theme.colors.border}
-                    textColor={theme.colors.textPrimary}
-                  />
-                ) : null}
-              </View>
-            </View>
-
-              <PrimaryButton
-                title="Save payment links"
-                onPress={handleSavePaymentSettings}
-                disabled={!paymentsDirty || savingPayments}
-                loading={savingPayments}
-                backgroundColor={theme.colors.primaryDark}
-                textColor={theme.colors.surface}
-              />
-            </>
-          )}
-        </View>
+        <PaymentSettingsSection
+          theme={theme}
+          userId={user?.id}
+          showFeedback={showFeedback}
+        />
 
         <View style={[styles.card, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }] }>
           <SectionHeading
@@ -1343,11 +911,6 @@ const styles = StyleSheet.create({
   },
   inputGroup: {
     marginBottom: 14,
-  },
-  inputLabel: {
-    fontSize: 13,
-    fontWeight: '500',
-    marginBottom: 6,
   },
   input: {
     borderWidth: 1,
@@ -1484,54 +1047,6 @@ const styles = StyleSheet.create({
   },
   subscriptionHeadingGroup: {
     flex: 1,
-  },
-  paypalSection: {
-    marginTop: 8,
-    gap: 12,
-  },
-  paypalHelpText: {
-    fontSize: 13,
-    lineHeight: 20,
-  },
-  paypalPreview: {
-    borderWidth: 1,
-    borderRadius: 12,
-    padding: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-    minHeight: 160,
-  },
-  paypalPlaceholder: {
-    fontSize: 13,
-  },
-  paypalImage: {
-    width: '100%',
-    height: 180,
-  },
-  paypalActions: {
-    width: '100%',
-  },
-  paypalUploadButton: {
-    width: '100%',
-    borderWidth: 1,
-    borderRadius: 12,
-    paddingVertical: 14,
-    paddingHorizontal: 16,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 12,
-  },
-  paypalUploadText: {
-    fontSize: 15,
-    fontWeight: '600',
-  },
-  paypalUploadHint: {
-    fontSize: 12,
-    marginTop: 4,
-  },
-  paypalRemoveButton: {
-    alignSelf: 'stretch',
-    width: '100%',
   },
   loadingRow: {
     flexDirection: 'row',

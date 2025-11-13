@@ -80,7 +80,6 @@ async function updateSubscription(id: string, payload: Record<string, unknown>):
 }
 
 Deno.serve(async (req) => {
-  try {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { status: 200 });
   }

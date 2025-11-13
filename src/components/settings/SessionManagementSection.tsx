@@ -1,7 +1,6 @@
 import React from 'react';
 import { View, Text, Pressable, ActivityIndicator, StyleSheet } from 'react-native';
 import { PrimaryButton, SecondaryButton, InputField, SectionHeading } from '@/components/common';
-import { SESSION_CODE_LENGTH } from '@/providers/SessionProvider';
 import type { ActiveSession } from '@/providers/SessionProvider';
 
 const MIN_SESSION_PASSPHRASE_LENGTH = 8;

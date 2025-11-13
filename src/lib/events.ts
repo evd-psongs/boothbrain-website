@@ -1,7 +1,8 @@
 import { supabase } from '@/lib/supabase';
 import type { EventRecord, EventChecklistItem } from '@/types/events';
+import type { EventRow } from '@/types/database';
 
-const toEvent = (row: any): EventRecord => ({
+const toEvent = (row: EventRow): EventRecord => ({
   id: row.id as string,
   ownerUserId: row.owner_user_id as string,
   name: row.name as string,

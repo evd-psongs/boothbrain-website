@@ -3,9 +3,10 @@ import type { RealtimePostgresChangesPayload } from '@supabase/supabase-js';
 
 import { supabase } from '@/lib/supabase';
 import type { EventRecord } from '@/types/events';
+import type { EventRow } from '@/types/database';
 import { listEvents } from '@/lib/events';
 
-const mapRow = (row: any): EventRecord => ({
+const mapRow = (row: EventRow): EventRecord => ({
   id: row.id,
   ownerUserId: row.owner_user_id,
   name: row.name,
@@ -37,8 +38,8 @@ export function useEvents(ownerUserId: string | null | undefined) {
     try {
       const result = await listEvents(ownerUserId);
       setEvents(result);
-    } catch (err: any) {
-      setError(err?.message ?? 'Failed to load events.');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to load events.');
     } finally {
       setLoading(false);
     }
@@ -67,7 +68,7 @@ export function useEvents(ownerUserId: string | null | undefined) {
           schema: 'public',
           filter: `owner_user_id=eq.${ownerUserId}`,
         },
-        (payload: RealtimePostgresChangesPayload<any>) => {
+        (payload: RealtimePostgresChangesPayload<EventRow>) => {
           setEvents((current) => {
             if (payload.eventType === 'INSERT' && payload.new) {
               return [...current, mapRow(payload.new)].sort((a, b) =>

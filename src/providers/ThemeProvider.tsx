@@ -4,6 +4,8 @@ import * as NavigationBar from 'expo-navigation-bar';
 
 import { lightTheme, darkTheme, Theme } from '@/theme/tokens';
 
+export type { Theme } from '@/theme/tokens';
+
 type ThemeContextValue = {
   colorScheme: ColorSchemeName;
   theme: Theme;
