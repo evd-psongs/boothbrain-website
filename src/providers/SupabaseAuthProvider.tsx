@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { Session } from '@supabase/supabase-js';
-import { Platform } from 'react-native';
+import { Platform, AppState } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import { supabase } from '@/lib/supabase';
@@ -9,7 +9,7 @@ import { getErrorMessage } from '@/types/database';
 import { withTimeout, withRetry, getTimeout } from '@/utils/asyncHelpers';
 import { buildAuthUser } from '@/lib/auth/authUserBuilder';
 import { useAuthOperations } from '@/hooks/useAuthOperations';
-import { checkNetworkConnectivity } from '@/utils/networkCheck';
+import { authenticateWithBiometrics, shouldUseBiometrics } from '@/utils/biometrics';
 
 type AuthContextValue = {
   user: AuthUser | null;
@@ -53,20 +53,17 @@ export function SupabaseAuthProvider({ children }: { children: React.ReactNode }
   useEffect(() => {
     const init = async () => {
       try {
-        // On iOS, check network connectivity first to avoid hanging
+        // On iOS in development (Expo Go), skip blocking session check
+        // and rely on onAuthStateChange to set session asynchronously
         if (isIOS && isDevelopment) {
-          const isConnected = await checkNetworkConnectivity();
-          if (!isConnected) {
-            console.warn('Network not reachable on iOS, skipping auth initialization');
-            setLoading(false);
-            initializingRef.current = false;
-            return;
-          }
+          console.log('📱 iOS Dev mode: Fast startup, session will load via onAuthStateChange');
+          setLoading(false);
+          initializingRef.current = false;
+          return;
         }
 
-        // On iOS, try to get cached session first for faster startup
-        if (isIOS && isDevelopment) {
-          // Check if we have a cached session without waiting for network
+        // On iOS production or Android: try to get cached session first for fast startup
+        if (isIOS) {
           const cachedSessionStr = await AsyncStorage.getItem('sb-auth-token').catch(() => null);
           if (cachedSessionStr) {
             try {
@@ -76,30 +73,41 @@ export function SupabaseAuthProvider({ children }: { children: React.ReactNode }
                 setSession(cachedSession.currentSession);
                 setLoading(false);
 
-                // Then verify session in background
-                supabase.auth.getSession().then(({ data: { session } }) => {
-                  if (session) {
-                    setSession(session);
-                    return buildAuthUser(session.user);
-                  } else {
-                    // Clear invalid cached session
-                    setSession(null);
-                    setUser(null);
+                // Try to refresh the session in background (Silent Token Refresh with timeout)
+                try {
+                  const refreshResult = await withTimeout(
+                    supabase.auth.refreshSession(),
+                    getTimeout('session', Platform.OS, isDevelopment),
+                    'Token refresh timed out'
+                  );
+
+                  if (refreshResult.data?.session) {
+                    // Token refresh succeeded - user stays logged in
+                    console.log('✅ Silent token refresh succeeded');
+                    setSession(refreshResult.data.session);
+                    const authUser = await buildAuthUser(refreshResult.data.session.user);
+                    setUser(authUser);
+                  } else if (refreshResult.error) {
+                    console.warn('Token refresh failed:', refreshResult.error.message);
+                    // Keep cached session - user can continue using app
                   }
-                }).then(authUser => {
-                  if (authUser) setUser(authUser);
-                }).catch(err => {
-                  console.warn('Background session refresh failed:', err);
-                });
+                } catch (refreshErr) {
+                  // Refresh timed out or failed - keep using cached session
+                  console.warn('Silent refresh failed, keeping cached session:', getErrorMessage(refreshErr));
+                  // User stays logged in with cached data
+                  // They'll get a fresh token when they perform an action that requires auth
+                }
 
                 initializingRef.current = false;
                 return; // Exit early with cached session
               }
-            } catch {}
+            } catch (err) {
+              console.warn('Failed to parse cached session:', err);
+            }
           }
         }
 
-        // Normal flow for non-iOS or no cached session
+        // Normal flow for Android or no cached session
         const sessionFetchFn = () => withTimeout(
           supabase.auth.getSession(),
           getTimeout('session', Platform.OS, isDevelopment),
@@ -109,9 +117,7 @@ export function SupabaseAuthProvider({ children }: { children: React.ReactNode }
         const {
           data: { session: initialSession },
           error: sessionError,
-        } = isIOS && isDevelopment
-          ? await sessionFetchFn()  // No retry on iOS for faster failure
-          : await withRetry(sessionFetchFn);
+        } = await withRetry(sessionFetchFn);
 
         if (sessionError) {
           throw sessionError;
@@ -125,15 +131,7 @@ export function SupabaseAuthProvider({ children }: { children: React.ReactNode }
         }
       } catch (err) {
         console.error('Failed to initialize auth session', err);
-        const errorMessage = getErrorMessage(err);
-
-        // On iOS timeout, don't show error - just let the user try to login
-        if (isIOS && errorMessage.includes('Timed out')) {
-          console.warn('Session check timed out on iOS, proceeding without session');
-          setError(null); // Don't show timeout error on iOS
-        } else {
-          setError(errorMessage);
-        }
+        setError(getErrorMessage(err));
       } finally {
         setLoading(false);
         initializingRef.current = false;
@@ -165,6 +163,62 @@ export function SupabaseAuthProvider({ children }: { children: React.ReactNode }
       subscription.unsubscribe();
     };
   }, []);
+
+  // Biometric authentication on app resume
+  useEffect(() => {
+    const appStateSubscription = AppState.addEventListener('change', async (nextAppState) => {
+      // When app comes to foreground and user is logged in
+      if (nextAppState === 'active' && session && user) {
+        const useBiometrics = await shouldUseBiometrics();
+
+        if (useBiometrics) {
+          // Temporarily hide sensitive content
+          const tempSession = session;
+          const tempUser = user;
+          setSession(null);
+          setUser(null);
+
+          const result = await authenticateWithBiometrics();
+
+          if (result.success) {
+            // Restore session
+            setSession(tempSession);
+            setUser(tempUser);
+
+            // Attempt silent token refresh to keep session alive (with timeout)
+            try {
+              const refreshResult = await withTimeout(
+                supabase.auth.refreshSession(),
+                getTimeout('session', Platform.OS, isDevelopment),
+                'Token refresh timed out after biometric auth'
+              );
+
+              if (refreshResult.data?.session) {
+                setSession(refreshResult.data.session);
+                const authUser = await buildAuthUser(refreshResult.data.session.user);
+                setUser(authUser);
+              }
+            } catch (err) {
+              console.warn('Background refresh failed after biometric auth:', getErrorMessage(err));
+              // Keep the cached session even if refresh fails
+              setSession(tempSession);
+              setUser(tempUser);
+            }
+          } else {
+            // Biometric auth failed - sign out for security
+            console.warn('Biometric authentication failed:', result.error);
+            await supabase.auth.signOut();
+            setSession(null);
+            setUser(null);
+          }
+        }
+      }
+    });
+
+    return () => {
+      appStateSubscription.remove();
+    };
+  }, [session, user]);
 
   const clearError = useCallback(() => {
     setError(null);

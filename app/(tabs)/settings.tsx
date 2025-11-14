@@ -718,7 +718,7 @@ export default function SettingsScreen() {
           <View style={styles.inlineActions}>
             <SecondaryButton
               style={styles.inlineActionButton}
-              title="Open billing portal"
+              title="Billing Portal"
               onPress={handleOpenBillingPortal}
               disabled={!canOpenBillingPortal || openingBillingPortal}
               loading={openingBillingPortal}
@@ -728,7 +728,7 @@ export default function SettingsScreen() {
             />
             <SecondaryButton
               style={[styles.inlineActionButton, styles.inlineActionButtonLast]}
-              title="Refresh subscription"
+              title="Refresh"
               onPress={handleRefreshSubscription}
               disabled={refreshingAccount}
               loading={refreshingAccount}

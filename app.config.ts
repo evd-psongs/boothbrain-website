@@ -2,8 +2,8 @@ import { ExpoConfig, ConfigContext } from 'expo/config';
 
 export default ({ config }: ConfigContext): ExpoConfig => ({
   ...config,
-  name: 'BoothBrainNext',
-  slug: 'boothbrain-next',
+  name: 'BoothBrain',
+  slug: 'boothbrain',
   version: '1.0.0',
   orientation: 'portrait',
   icon: './assets/icon.png',
@@ -19,6 +19,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     bundleIdentifier: 'com.boothbrain.app',
     infoPlist: {
       ITSAppUsesNonExemptEncryption: false,
+      NSFaceIDUsageDescription: 'BoothBrain uses Face ID to securely authenticate you when you return to the app.',
     },
   },
   android: {
@@ -27,6 +28,10 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
       backgroundColor: '#F5F6F8',
     },
     package: 'com.boothbrain.app',
+    permissions: [
+      'USE_BIOMETRIC',
+      'USE_FINGERPRINT',
+    ],
   },
   androidNavigationBar: {
     backgroundColor: '#F5F6F8',
@@ -41,6 +46,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     'expo-secure-store',
     'expo-document-picker',
     'expo-camera',
+    'expo-local-authentication',
     [
       'expo-build-properties',
       {
