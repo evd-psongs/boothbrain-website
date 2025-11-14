@@ -141,6 +141,32 @@ Previous session (2025-10-31):
 - **Error Tracking:** Firebase Crashlytics
 - **Navigation:** Expo Router
 
+## Critical Integration Points
+
+### Database Schema Changes
+When modifying Supabase tables:
+1. **NEVER** change column names without updating `database.ts` types first
+2. **ALWAYS** update corresponding Row types in `src/types/database.ts`
+3. **VERIFY** all API files using that table still compile
+4. **TEST** existing features that use the modified table
+5. Remember the `ended_at` vs `is_active` incident - verify actual DB schema first!
+
+### Provider Dependencies
+These providers are interconnected - changes require extra care:
+- **SupabaseAuthProvider** → **SessionProvider** (session depends on auth user)
+- **SessionProvider** → All screens (most screens use session context)
+- **ThemeProvider** → All screens (styling depends on theme)
+
+When modifying providers:
+- Check all files that import the provider context
+- Verify context value shape hasn't changed in a breaking way
+- Test on actual device, not just type-checking
+
+### External Service Integration
+- **Supabase:** All database operations use typed Row interfaces from `database.ts`
+- **Firebase Crashlytics:** Currently mocked for Expo Go (see firebase.ts)
+- **Stripe Webhooks:** Known parsing errors exist - don't introduce more!
+
 ## Recent Changes
 - **2025-10-31:** Fixed file structure - moved files to correct `/src` directories
 - **2025-10-31:** Created Firebase mock implementation for Expo Go compatibility
@@ -268,10 +294,74 @@ export function ProfileSection() {
 }
 ```
 
+## Regression Prevention Rules
+
+### Database Type Safety
+- ✅ **DO:** Use typed database.ts interfaces (`ProfileRow`, `ItemRow`, etc.)
+- ❌ **DON'T:** Use `any` for Supabase query results
+- ✅ **DO:** Use `getErrorMessage()` and `isSupabaseError()` helpers
+- ❌ **DON'T:** Access error properties without type guards
+
+### Utility Function Usage
+- ✅ **DO:** Import from centralized utilities (dates.ts, payment.ts, asyncHelpers.ts)
+- ❌ **DON'T:** Duplicate formatting logic (formatEventRange, formatPaymentLabel already exist)
+- ✅ **DO:** Add new utilities to existing files if related
+- ❌ **DON'T:** Create new utility files without checking existing ones first
+
+### Component Extraction Rules
+- ✅ **DO:** Extract when file exceeds size limits (components: 300, hooks: 150)
+- ❌ **DON'T:** Create "god components" that do everything
+- ✅ **DO:** Reuse existing components (PrimaryButton, InputField, etc.)
+- ❌ **DON'T:** Create new components for things that already exist
+
+### Breaking Changes - NEVER DO THIS:
+- ❌ Change database column names without comprehensive type updates
+- ❌ Modify context provider value shapes without updating all consumers
+- ❌ Remove utility functions without checking all usages first
+- ❌ Add `any` types to bypass TypeScript errors
+- ❌ Skip loading states for async operations
+- ❌ Remove error handling from existing code
+
 ## Testing Strategy
 - Unit test utilities and hooks
 - Integration test providers
 - E2E test critical user flows
+
+## Quality Gates for New Features
+
+### Pre-Implementation Checklist
+Before starting any new feature:
+- [ ] Identify which existing components/services will be affected
+- [ ] Review related database types in `src/types/database.ts`
+- [ ] Check if existing utilities can be reused (dates.ts, payment.ts, asyncHelpers.ts)
+- [ ] Verify file size limits won't be exceeded (components: 300 lines, hooks: 150 lines)
+
+### Implementation Requirements
+All new features MUST:
+- [ ] Use TypeScript with **zero `any` types** (maintain current achievement)
+- [ ] Import from existing utilities instead of duplicating logic
+- [ ] Use proper database types from `database.ts`
+- [ ] Include loading/error states for all async operations
+- [ ] Follow existing patterns (service modules, custom hooks, separated concerns)
+- [ ] Stay within file size limits or extract components
+
+### Pre-Commit Verification
+Before committing new features, verify:
+- [ ] `npm run typecheck` passes with zero errors
+- [ ] `npm run lint` passes with zero errors
+- [ ] No new `any` types introduced
+- [ ] No duplicate utility functions created
+- [ ] File sizes still within limits (run `wc -l` on modified files)
+- [ ] All imports use `@/` alias for src imports
+- [ ] No unused imports or variables
+
+### Manual Testing Checklist
+Test these critical flows after ANY change:
+- [ ] **Auth Flow:** Sign up → Login → Profile update → Logout
+- [ ] **Session Flow:** Create session → Join session → End session
+- [ ] **Inventory Flow:** Add item → Edit item → Delete item → CSV export
+- [ ] **Sales Flow:** Add to cart → Apply discount → Checkout → Payment
+- [ ] **Events Flow:** Create event → Add task → Mark complete → Delete event
 
 ## Documentation Standards
 - Every exported function needs JSDoc
@@ -344,3 +434,12 @@ export function ProfileSection() {
 - Keep components focused on rendering
 - Run `wc -l filename` to check file sizes before/after refactoring
 - Commit frequently with descriptive messages
+
+### Feature Development Workflow
+1. **Plan:** Identify affected files and integration points
+2. **Check:** Review existing utilities and components to reuse
+3. **Implement:** Follow type safety and file size guidelines
+4. **Verify:** Run typecheck and lint
+5. **Test:** Complete manual testing checklist for critical flows
+6. **Update:** Update CLAUDE.md if architectural changes were made
+7. **Commit:** Use descriptive commit messages
