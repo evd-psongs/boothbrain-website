@@ -55,6 +55,8 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
         ios: {
           privacyManifestAggregationEnabled: false,
           useFrameworks: 'static',
+          deploymentTarget: '13.4',
+          buildReactNativeFromSource: true,
         },
       },
     ],
