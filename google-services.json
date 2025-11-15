@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "111040566785",
+    "project_id": "boothbrain-ea7a9",
+    "storage_bucket": "boothbrain-ea7a9.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:111040566785:android:0b5e77cb0386a2ddc1d200",
+        "android_client_info": {
+          "package_name": "com.boothbrain.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyALQSsX8F6hxo9SpRcoSXcvzsGyhSyRXMI"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
