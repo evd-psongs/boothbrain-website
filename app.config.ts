@@ -17,6 +17,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
   ios: {
     supportsTablet: true,
     bundleIdentifier: 'com.boothbrain.app',
+    googleServicesFile: './GoogleService-Info.plist',
     infoPlist: {
       ITSAppUsesNonExemptEncryption: false,
       NSFaceIDUsageDescription: 'BoothBrain uses Face ID to securely authenticate you when you return to the app.',
@@ -28,6 +29,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
       backgroundColor: '#F5F6F8',
     },
     package: 'com.boothbrain.app',
+    googleServicesFile: './google-services.json',
     permissions: [
       'USE_BIOMETRIC',
       'USE_FINGERPRINT',
