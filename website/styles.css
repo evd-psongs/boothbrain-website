@@ -1,0 +1,433 @@
+/* Reset and Base Styles */
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+    line-height: 1.6;
+    color: #333;
+    background-color: #fff;
+}
+
+.container {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 0 20px;
+}
+
+/* Header & Navigation */
+header {
+    background-color: #090A0F;
+    padding: 1rem 0;
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+}
+
+nav .container {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.logo {
+    color: #fff;
+    font-size: 1.5rem;
+    font-weight: bold;
+}
+
+.logo a {
+    color: #fff;
+    text-decoration: none;
+}
+
+.nav-links {
+    display: flex;
+    list-style: none;
+    gap: 2rem;
+}
+
+.nav-links a {
+    color: #fff;
+    text-decoration: none;
+    transition: opacity 0.3s;
+}
+
+.nav-links a:hover,
+.nav-links a.active {
+    opacity: 0.8;
+}
+
+/* Hero Section */
+.hero {
+    background: linear-gradient(135deg, #090A0F 0%, #1a1b24 100%);
+    color: #fff;
+    padding: 5rem 0;
+    text-align: center;
+}
+
+.hero h2 {
+    font-size: 2.5rem;
+    margin-bottom: 1rem;
+}
+
+.hero .subtitle {
+    font-size: 1.2rem;
+    margin-bottom: 2rem;
+    opacity: 0.9;
+    max-width: 700px;
+    margin-left: auto;
+    margin-right: auto;
+}
+
+/* Buttons */
+.btn {
+    display: inline-block;
+    padding: 0.8rem 2rem;
+    border-radius: 8px;
+    text-decoration: none;
+    font-weight: 600;
+    transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+}
+
+.btn-primary {
+    background-color: #007AFF;
+    color: #fff;
+}
+
+.btn-secondary {
+    background-color: #34C759;
+    color: #fff;
+}
+
+.download-buttons {
+    display: flex;
+    gap: 1rem;
+    justify-content: center;
+    flex-wrap: wrap;
+}
+
+/* Features Section */
+.features {
+    padding: 5rem 0;
+    background-color: #F5F6F8;
+}
+
+.features h2 {
+    text-align: center;
+    font-size: 2rem;
+    margin-bottom: 3rem;
+}
+
+.feature-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 2rem;
+}
+
+.feature {
+    background: #fff;
+    padding: 2rem;
+    border-radius: 12px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    transition: transform 0.2s;
+}
+
+.feature:hover {
+    transform: translateY(-5px);
+}
+
+.feature-icon {
+    font-size: 3rem;
+    margin-bottom: 1rem;
+}
+
+.feature h3 {
+    font-size: 1.3rem;
+    margin-bottom: 0.5rem;
+}
+
+.feature p {
+    color: #666;
+}
+
+/* Pricing Section */
+.pricing {
+    padding: 5rem 0;
+    text-align: center;
+}
+
+.pricing h2 {
+    font-size: 2rem;
+    margin-bottom: 1rem;
+}
+
+.pricing-note {
+    margin-top: 2rem;
+    font-size: 1.1rem;
+}
+
+.pricing-note p {
+    margin: 0.5rem 0;
+    color: #34C759;
+    font-weight: 600;
+}
+
+/* CTA Section */
+.cta {
+    background: linear-gradient(135deg, #007AFF 0%, #0055cc 100%);
+    color: #fff;
+    padding: 4rem 0;
+    text-align: center;
+}
+
+.cta h2 {
+    font-size: 2rem;
+    margin-bottom: 1rem;
+}
+
+.cta p {
+    font-size: 1.2rem;
+    margin-bottom: 2rem;
+}
+
+/* Footer */
+footer {
+    background-color: #090A0F;
+    color: #fff;
+    padding: 3rem 0 1rem;
+}
+
+.footer-content {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 2rem;
+    margin-bottom: 2rem;
+}
+
+.footer-section h3,
+.footer-section h4 {
+    margin-bottom: 1rem;
+}
+
+.footer-section ul {
+    list-style: none;
+}
+
+.footer-section a {
+    color: #fff;
+    text-decoration: none;
+    opacity: 0.8;
+    transition: opacity 0.3s;
+}
+
+.footer-section a:hover {
+    opacity: 1;
+}
+
+.footer-bottom {
+    text-align: center;
+    padding-top: 2rem;
+    border-top: 1px solid rgba(255,255,255,0.1);
+    opacity: 0.6;
+}
+
+.footer-bottom a {
+    color: #fff;
+    text-decoration: none;
+    margin: 0 0.5rem;
+}
+
+/* Legal Pages */
+.legal-page {
+    padding: 3rem 0;
+    max-width: 900px;
+    margin: 0 auto;
+}
+
+.legal-page .container {
+    background: #fff;
+}
+
+.legal-page h1 {
+    font-size: 2.5rem;
+    margin-bottom: 0.5rem;
+    color: #090A0F;
+}
+
+.last-updated {
+    color: #666;
+    font-style: italic;
+    margin-bottom: 2rem;
+}
+
+.legal-page section {
+    margin-bottom: 2rem;
+}
+
+.legal-page h2 {
+    font-size: 1.8rem;
+    margin-bottom: 1rem;
+    color: #090A0F;
+    border-bottom: 2px solid #F5F6F8;
+    padding-bottom: 0.5rem;
+}
+
+.legal-page h3 {
+    font-size: 1.3rem;
+    margin-bottom: 0.5rem;
+    margin-top: 1rem;
+    color: #333;
+}
+
+.legal-page ul,
+.legal-page ol {
+    margin-left: 2rem;
+    margin-bottom: 1rem;
+}
+
+.legal-page li {
+    margin-bottom: 0.5rem;
+}
+
+.legal-page a {
+    color: #007AFF;
+    text-decoration: none;
+}
+
+.legal-page a:hover {
+    text-decoration: underline;
+}
+
+/* Support Page */
+.support-page {
+    padding: 3rem 0;
+}
+
+.support-page h1 {
+    font-size: 2.5rem;
+    margin-bottom: 1rem;
+    text-align: center;
+}
+
+.support-page .subtitle {
+    text-align: center;
+    font-size: 1.2rem;
+    color: #666;
+    margin-bottom: 3rem;
+}
+
+.contact-section {
+    background: #F5F6F8;
+    padding: 2rem;
+    border-radius: 12px;
+    text-align: center;
+    margin-bottom: 3rem;
+}
+
+.contact-section h2 {
+    margin-bottom: 1rem;
+}
+
+.contact-section a {
+    color: #007AFF;
+    font-weight: 600;
+    text-decoration: none;
+}
+
+.faq-section {
+    margin-bottom: 3rem;
+}
+
+.faq-category {
+    margin-bottom: 3rem;
+}
+
+.faq-category h3 {
+    font-size: 1.5rem;
+    margin-bottom: 1.5rem;
+    color: #090A0F;
+    border-bottom: 2px solid #F5F6F8;
+    padding-bottom: 0.5rem;
+}
+
+.faq-item {
+    margin-bottom: 1.5rem;
+}
+
+.faq-item h4 {
+    font-size: 1.1rem;
+    margin-bottom: 0.5rem;
+    color: #333;
+}
+
+.faq-item p,
+.faq-item ol {
+    color: #666;
+    line-height: 1.6;
+}
+
+.faq-item ol {
+    margin-left: 1.5rem;
+}
+
+.contact-cta {
+    background: linear-gradient(135deg, #007AFF 0%, #0055cc 100%);
+    color: #fff;
+    padding: 3rem;
+    border-radius: 12px;
+    text-align: center;
+}
+
+.contact-cta h2 {
+    margin-bottom: 1rem;
+}
+
+.contact-cta p {
+    margin-bottom: 2rem;
+    font-size: 1.1rem;
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+    .hero h2 {
+        font-size: 2rem;
+    }
+
+    .hero .subtitle {
+        font-size: 1rem;
+    }
+
+    .nav-links {
+        gap: 1rem;
+    }
+
+    .feature-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .download-buttons {
+        flex-direction: column;
+    }
+
+    .footer-content {
+        grid-template-columns: 1fr;
+    }
+
+    .legal-page h1 {
+        font-size: 2rem;
+    }
+
+    .legal-page h2 {
+        font-size: 1.5rem;
+    }
+}

@@ -825,6 +825,41 @@ export default function SettingsScreen() {
           />
         </View>
 
+        <View style={[styles.card, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }] }>
+          <SectionHeading
+            title="About"
+            subtitle="Learn more about BoothBrain and our privacy practices."
+            titleColor={theme.colors.textPrimary}
+            subtitleColor={theme.colors.textSecondary}
+          />
+
+          <SecondaryButton
+            title="Visit our website"
+            onPress={() => Linking.openURL('https://psong-sys.github.io/boothbrain-website/')}
+            backgroundColor="transparent"
+            borderColor={theme.colors.border}
+            textColor={theme.colors.textPrimary}
+            style={{ marginBottom: 12 }}
+          />
+
+          <SecondaryButton
+            title="Privacy Policy"
+            onPress={() => Linking.openURL('https://psong-sys.github.io/boothbrain-website/privacy.html')}
+            backgroundColor="transparent"
+            borderColor={theme.colors.border}
+            textColor={theme.colors.textPrimary}
+            style={{ marginBottom: 12 }}
+          />
+
+          <SecondaryButton
+            title="Terms of Service"
+            onPress={() => Linking.openURL('https://psong-sys.github.io/boothbrain-website/terms.html')}
+            backgroundColor="transparent"
+            borderColor={theme.colors.border}
+            textColor={theme.colors.textPrimary}
+          />
+        </View>
+
         <View style={[styles.card, { backgroundColor: theme.colors.surface, borderColor: theme.colors.error }] }>
           <SectionHeading
             title="Sign out"
