@@ -54,6 +54,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
       {
         ios: {
           privacyManifestAggregationEnabled: false,
+          useFrameworks: 'static',
         },
       },
     ],
