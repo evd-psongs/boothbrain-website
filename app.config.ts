@@ -3,7 +3,7 @@ import { ExpoConfig, ConfigContext } from 'expo/config';
 export default ({ config }: ConfigContext): ExpoConfig => ({
   ...config,
   name: 'BoothBrain',
-  slug: 'boothbrain',
+  slug: 'boothbrain-next',
   version: '1.0.0',
   orientation: 'portrait',
   icon: './assets/icon.png',
