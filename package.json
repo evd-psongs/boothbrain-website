@@ -10,7 +10,19 @@
     "web": "expo start --web",
     "test": "jest --runInBand",
     "lint": "eslint . --ext .ts,.tsx",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "build:preview:ios": "eas build --profile preview --platform ios",
+    "build:preview:android": "eas build --profile preview --platform android",
+    "build:preview:all": "eas build --profile preview --platform all",
+    "build:prod:ios": "eas build --profile production --platform ios",
+    "build:prod:android": "eas build --profile production --platform android",
+    "build:prod:all": "eas build --profile production --platform all",
+    "submit:ios": "eas submit --platform ios",
+    "submit:android": "eas submit --platform android",
+    "build:submit:ios": "npm run build:prod:ios && npm run submit:ios",
+    "build:list": "eas build:list --limit 10",
+    "build:check": "npm run typecheck && npm run lint",
+    "ship:ios": "npm run build:check && npm run build:prod:ios"
   },
   "dependencies": {
     "@react-native-async-storage/async-storage": "^2.2.0",
