@@ -4,6 +4,61 @@ Quick reference for running development builds and creating production builds.
 
 ---
 
+## 🚀 Quick Start (npm Scripts)
+
+We've added convenient npm scripts to make building easier. Use these instead of typing long EAS commands!
+
+### **Most Common Commands**
+
+```bash
+# Build production iOS and run quality checks first
+npm run ship:ios
+
+# Build production iOS for TestFlight
+npm run build:prod:ios
+
+# Submit existing build to TestFlight
+npm run submit:ios
+
+# Run TypeScript + ESLint checks
+npm run build:check
+
+# List recent builds
+npm run build:list
+```
+
+### **All Available Scripts**
+
+**Preview Builds (Internal Testing):**
+```bash
+npm run build:preview:ios       # iOS preview build (QR code install)
+npm run build:preview:android   # Android preview build
+npm run build:preview:all       # Both platforms
+```
+
+**Production Builds (App Store/TestFlight):**
+```bash
+npm run build:prod:ios          # iOS for TestFlight/App Store
+npm run build:prod:android      # Android for Google Play
+npm run build:prod:all          # Both platforms
+```
+
+**Submission:**
+```bash
+npm run submit:ios              # Submit to TestFlight/App Store
+npm run submit:android          # Submit to Google Play
+npm run build:submit:ios        # Build + submit (combined)
+```
+
+**Utilities:**
+```bash
+npm run build:check             # Run TypeScript + ESLint
+npm run build:list              # List recent builds
+npm run ship:ios                # Check + build production iOS
+```
+
+---
+
 ## 🚀 Running Development Build (Expo Dev Client)
 
 ### Option 1: Using Existing Dev Build
