@@ -64,12 +64,35 @@ BoothBrain is an Expo React Native app for managing vendor booth inventory and s
   - Both branches in sync with all production changes
   - Working tree clean on both branches
 
+- ✅ **Added Convenient npm Build Scripts** 🛠️
+  - Created 12 npm scripts to simplify EAS build workflows
+  - No more typing long `eas build --profile production --platform ios` commands
+  - Added combined workflows (e.g., `npm run ship:ios` runs checks + builds)
+  - Updated EXPO_BUILD_GUIDE.md with complete script documentation
+  - Commits: `20a34a3`, `b9fe6bf`
+
+  **Most Useful Scripts:**
+  ```bash
+  npm run ship:ios           # Check + build production iOS
+  npm run build:prod:ios     # Build for TestFlight
+  npm run submit:ios         # Submit to TestFlight
+  npm run build:check        # TypeScript + ESLint
+  npm run build:list         # List recent builds
+  ```
+
+  **All Scripts Categories:**
+  - Preview builds: `build:preview:ios/android/all`
+  - Production builds: `build:prod:ios/android/all`
+  - Submission: `submit:ios/android`, `build:submit:ios`
+  - Utilities: `build:check`, `build:list`, `ship:ios`
+
 - 📊 **Production Readiness:** 100% COMPLETE! 🎉
   - ✅ App successfully built for App Store
   - ✅ Submitted to TestFlight
   - ✅ Available for internal testing
   - ✅ All code quality checks passing
   - ✅ All documentation complete
+  - ✅ Build scripts added for easier deployment
   - 🎯 **Next:** Collect beta tester feedback → Final App Store submission
 
 ## Previous Session (2025-11-15 - Production Prep)
