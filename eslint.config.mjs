@@ -59,6 +59,12 @@ export default [
       'no-undef': 'off',
       '@typescript-eslint/no-unused-vars': ['error', { argsIgnorePattern: '^_' }],
       '@typescript-eslint/no-explicit-any': 'off',
+      '@typescript-eslint/no-require-imports': [
+        'error',
+        {
+          allow: ['\\.png$', '\\.jpg$', '\\.jpeg$', '\\.gif$', '\\.svg$', '\\.webp$'],
+        },
+      ],
     },
   },
 ];

@@ -3,6 +3,20 @@
 ## Project Overview
 BoothBrain is an Expo React Native app for managing vendor booth inventory and sales.
 
+## Development Environment (IMPORTANT!)
+⚠️ **Windows + WSL Setup:**
+- This project is developed on Windows with WSL (Windows Subsystem for Linux)
+- **ALWAYS run `npm install` and `npm start` from Windows PowerShell/Terminal, NOT from WSL**
+- Running npm commands from WSL will install Linux binaries that won't work in Windows PowerShell
+- If you get `'expo' is not recognized` error:
+  1. Open **Windows PowerShell** (not WSL)
+  2. Run `Remove-Item -Recurse -Force node_modules`
+  3. Run `npm cache clean --force`
+  4. Run `npm install`
+  5. Run `npm start`
+- Code editing and git operations can be done from either WSL or Windows
+- Metro Bundler must run from Windows to work with Expo Go app on your phone
+
 ## Refactoring Achievement Summary (2025-11-06)
 🎉 **Major refactoring milestone completed!**
 - Started with 4 screens over 1,600 lines each + 2 providers over 350 lines
@@ -11,7 +25,43 @@ BoothBrain is an Expo React Native app for managing vendor booth inventory and s
 - All major files now under 1,300 lines (most under 200 lines)
 - Created clear separation of concerns with dedicated service layers
 
-## Current Session (2025-11-15 - Build Debug & Production Build)
+## Current Session (2025-11-17 - Login UI & Biometric Settings)
+- ✅ **Enhanced Login Screen** 🎨
+  - Added BoothBrain logo (100×100px) to login screen
+  - Centered title and subtitle text for better visual balance
+  - Updated `app/auth/sign-in.tsx` with professional branding
+  - Fixed ESLint config to allow `require()` for image assets
+
+- ✅ **Implemented Biometric Settings Toggle** 🔐
+  - Created `src/utils/biometricPreferences.ts` - User preference storage with AsyncStorage
+  - Created `src/components/settings/SecuritySection.tsx` - New Security settings UI component
+  - Updated `src/utils/biometrics.ts` - Now checks both device capability AND user preference
+  - Added Security section to Settings screen (below Password section)
+  - Shows device-specific labels (Face ID/Touch ID/Fingerprint)
+  - Displays helpful message if biometrics aren't available/enrolled
+  - User can now enable/disable biometric authentication on app resume
+  - Preference persists across app restarts
+
+- ✅ **Documented Windows/WSL Development Workflow**
+  - Added critical note: Always run `npm install` and `npm start` from Windows PowerShell
+  - WSL installs Linux binaries that don't work in Windows PowerShell
+  - Added troubleshooting steps for `'expo' is not recognized` error
+
+- ✅ **Code Quality Verified**
+  - TypeScript compilation: ✅ Zero errors (`npm run typecheck`)
+  - ESLint: ✅ Zero errors (`npm run lint`)
+  - Updated ESLint config to allow require() for image assets (.png, .jpg, etc.)
+
+- 📝 **Files Modified:**
+  - `app/auth/sign-in.tsx` - Added logo and improved layout
+  - `src/utils/biometricPreferences.ts` - New file for preference storage
+  - `src/components/settings/SecuritySection.tsx` - New Security settings component
+  - `src/utils/biometrics.ts` - Updated to check user preferences
+  - `app/(tabs)/settings.tsx` - Added SecuritySection import and render
+  - `eslint.config.mjs` - Added exception for image requires
+  - `CLAUDE.md` - Added Windows/WSL development notes
+
+## Previous Session #1 (2025-11-15 - Build Debug & Production Build)
 - ✅ **Fixed ALL EAS Build Issues - 5 Critical Bugs Resolved!** 🎉
 
   **Issue #1: Missing Firebase Config Files**
@@ -95,7 +145,7 @@ BoothBrain is an Expo React Native app for managing vendor booth inventory and s
   - ✅ Build scripts added for easier deployment
   - 🎯 **Next:** Collect beta tester feedback → Final App Store submission
 
-## Previous Session (2025-11-15 - Production Prep)
+## Previous Session #2 (2025-11-15 - Production Prep)
 - ✅ **Completed Production Readiness Preparation** 📱
 - ✅ **Verified Stripe webhook errors already fixed** - Both webhook files have proper error handling
 - ✅ **Created .env.example file** - Complete environment variable documentation

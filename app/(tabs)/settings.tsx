@@ -22,6 +22,7 @@ import {
 import { SessionManagementSection } from '@/components/settings/SessionManagementSection';
 import { ProfileSection } from '@/components/settings/ProfileSection';
 import { PasswordSection } from '@/components/settings/PasswordSection';
+import { SecuritySection } from '@/components/settings/SecuritySection';
 import { PaymentSettingsSection } from '@/components/settings/PaymentSettingsSection';
 import { useSubscriptionPlans } from '@/hooks/useSubscriptionPlans';
 import { startCheckoutSession, openBillingPortal } from '@/lib/billing';
@@ -680,6 +681,11 @@ export default function SettingsScreen() {
         <PasswordSection
           theme={theme}
           updatePassword={updatePassword}
+          showFeedback={showFeedback}
+        />
+
+        <SecuritySection
+          theme={theme}
           showFeedback={showFeedback}
         />
 

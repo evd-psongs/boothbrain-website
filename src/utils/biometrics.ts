@@ -115,10 +115,14 @@ export async function authenticateWithBiometrics(
 
 /**
  * Check if biometrics should be used for this session
- * (can be expanded later to include user preferences)
+ * Checks both device capability and user preference
  */
 export async function shouldUseBiometrics(): Promise<boolean> {
-  // For now, always use biometrics if available
-  // Later, you can add user preference check from settings
-  return await isBiometricAvailable();
+  const available = await isBiometricAvailable();
+  if (!available) return false;
+
+  // Check user preference
+  const { getBiometricPreference } = await import('./biometricPreferences');
+  const enabled = await getBiometricPreference();
+  return enabled;
 }

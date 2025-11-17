@@ -8,11 +8,14 @@ import {
   TextInput,
   ActivityIndicator,
   Pressable,
+  Image,
 } from 'react-native';
 import { Link, useRouter } from 'expo-router';
 
 import { useSupabaseAuth } from '@/providers/SupabaseAuthProvider';
 import { useTheme } from '@/providers/ThemeProvider';
+
+const logoImage = require('../../assets/icon.png') as number;
 
 export default function SignInScreen() {
   const router = useRouter();
@@ -51,6 +54,13 @@ export default function SignInScreen() {
     >
       <View style={styles.inner}>
         <View style={[styles.card, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
+          <View style={styles.logoContainer}>
+            <Image
+              source={logoImage}
+              style={styles.logo}
+              resizeMode="contain"
+            />
+          </View>
           <Text style={[styles.title, { color: theme.colors.textPrimary }]}>Welcome back</Text>
           <Text style={[styles.subtitle, { color: theme.colors.textSecondary }]}>
             Sign in to continue managing your booth.
@@ -150,13 +160,23 @@ const styles = StyleSheet.create({
     padding: 28,
     gap: 20,
   },
+  logoContainer: {
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  logo: {
+    width: 100,
+    height: 100,
+  },
   title: {
     fontSize: 26,
     fontWeight: '600',
+    textAlign: 'center',
   },
   subtitle: {
     fontSize: 16,
     lineHeight: 24,
+    textAlign: 'center',
   },
   formGroup: {
     gap: 8,
