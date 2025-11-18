@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -9,13 +9,25 @@ import {
   ActivityIndicator,
   Pressable,
   Image,
+  Switch,
 } from 'react-native';
 import { Link, useRouter } from 'expo-router';
+import { LinearGradient } from 'expo-linear-gradient';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { Ionicons } from '@expo/vector-icons';
 
 import { useSupabaseAuth } from '@/providers/SupabaseAuthProvider';
 import { useTheme } from '@/providers/ThemeProvider';
+import {
+  isBiometricAvailable,
+  getBiometricType,
+  authenticateWithBiometrics,
+  type BiometricType
+} from '@/utils/biometrics';
+import { getBiometricPreference } from '@/utils/biometricPreferences';
+import { supabase } from '@/lib/supabase';
 
-const logoImage = require('../../assets/icon.png') as number;
+const logoImage = require('../../misc/BBtrans.png') as number;
 
 export default function SignInScreen() {
   const router = useRouter();
@@ -26,8 +38,90 @@ export default function SignInScreen() {
   const [password, setPassword] = useState('');
   const [localError, setLocalError] = useState<string | null>(null);
   const [showPassword, setShowPassword] = useState(false);
+  const [rememberMe, setRememberMe] = useState(false);
+  const [biometricType, setBiometricType] = useState<BiometricType>('none');
+  const [canUseBiometricLogin, setCanUseBiometricLogin] = useState(false);
+  const [biometricLoading, setBiometricLoading] = useState(false);
 
   const displayError = localError || error;
+
+  // Load saved email and check biometric availability on mount
+  useEffect(() => {
+    const initialize = async () => {
+      try {
+        // Load saved email
+        const savedEmail = await AsyncStorage.getItem('@booth_brain_saved_email');
+        if (savedEmail) {
+          setEmail(savedEmail);
+          setRememberMe(true);
+        }
+
+        // Check biometric availability
+        const [available, type, preference] = await Promise.all([
+          isBiometricAvailable(),
+          getBiometricType(),
+          getBiometricPreference(),
+        ]);
+
+        setBiometricType(type);
+
+        // Check if user has a valid session (for biometric login)
+        const { data: { session } } = await supabase.auth.getSession();
+
+        // Can use biometric login if:
+        // 1. Biometrics are available and enabled
+        // 2. User has a saved session OR saved email (previous login)
+        const canUseBiometric = available && preference && (!!session || !!savedEmail);
+        setCanUseBiometricLogin(canUseBiometric);
+      } catch (error) {
+        console.error('Failed to initialize login screen:', error);
+      }
+    };
+    void initialize();
+  }, []);
+
+  const handleBiometricSignIn = useCallback(async () => {
+    setBiometricLoading(true);
+    setLocalError(null);
+    clearError();
+
+    try {
+      // Prompt for biometric authentication
+      const result = await authenticateWithBiometrics();
+
+      if (!result.success) {
+        setLocalError(result.error || 'Biometric authentication failed');
+        setBiometricLoading(false);
+        return;
+      }
+
+      // Check if we have a valid session
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+
+      if (sessionError || !session) {
+        setLocalError('No saved session found. Please sign in with your password.');
+        setBiometricLoading(false);
+        return;
+      }
+
+      // Refresh the session
+      const { error: refreshError } = await supabase.auth.refreshSession();
+
+      if (refreshError) {
+        setLocalError('Session expired. Please sign in with your password.');
+        setBiometricLoading(false);
+        return;
+      }
+
+      // Success! Navigate to home
+      router.replace('/(tabs)/home');
+    } catch (err) {
+      console.error('Biometric sign in failed', err);
+      setLocalError('Failed to sign in. Please try again.');
+    } finally {
+      setBiometricLoading(false);
+    }
+  }, [router, clearError]);
 
   const handleSignIn = useCallback(async () => {
     const trimmedEmail = email.trim();
@@ -40,31 +134,87 @@ export default function SignInScreen() {
     clearError();
 
     try {
+      // Save or clear email based on Remember Me toggle
+      if (rememberMe) {
+        await AsyncStorage.setItem('@booth_brain_saved_email', trimmedEmail);
+      } else {
+        await AsyncStorage.removeItem('@booth_brain_saved_email');
+      }
+
       await signIn({ email: trimmedEmail, password });
       router.replace('/(tabs)/home');
     } catch (err) {
       console.error('Sign in failed', err);
     }
-  }, [email, password, signIn, router, clearError]);
+  }, [email, password, rememberMe, signIn, router, clearError]);
 
   return (
-    <KeyboardAvoidingView
-      style={[styles.container, { backgroundColor: theme.colors.background }]}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+    <LinearGradient
+      colors={['#0575E6', '#021B79']}
+      start={{ x: 0, y: 0 }}
+      end={{ x: 1, y: 1 }}
+      style={styles.gradient}
     >
-      <View style={styles.inner}>
-        <View style={[styles.card, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
-          <View style={styles.logoContainer}>
-            <Image
-              source={logoImage}
-              style={styles.logo}
-              resizeMode="contain"
-            />
-          </View>
-          <Text style={[styles.title, { color: theme.colors.textPrimary }]}>Welcome back</Text>
-          <Text style={[styles.subtitle, { color: theme.colors.textSecondary }]}>
-            Sign in to continue managing your booth.
-          </Text>
+      <KeyboardAvoidingView
+        style={styles.container}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      >
+        <View style={styles.inner}>
+          <View style={[styles.card, { backgroundColor: theme.colors.surface }]}>
+            <View style={styles.logoContainer}>
+              <Image
+                source={logoImage}
+                style={styles.logo}
+                resizeMode="contain"
+              />
+            </View>
+            <Text style={[styles.title, { color: theme.colors.textPrimary }]}>Welcome back</Text>
+
+            {canUseBiometricLogin && (
+              <>
+                <Pressable
+                  style={[
+                    styles.biometricButton,
+                    { backgroundColor: theme.colors.primary, opacity: biometricLoading ? 0.8 : 1 },
+                  ]}
+                  onPress={handleBiometricSignIn}
+                  disabled={biometricLoading || loading}
+                >
+                  {biometricLoading ? (
+                    <ActivityIndicator color={theme.colors.surface} />
+                  ) : (
+                    <>
+                      <Ionicons
+                        name={
+                          biometricType === 'facial'
+                            ? 'scan'
+                            : biometricType === 'fingerprint'
+                              ? 'finger-print'
+                              : 'shield-checkmark'
+                        }
+                        size={24}
+                        color={theme.colors.surface}
+                      />
+                      <Text style={[styles.biometricButtonText, { color: theme.colors.surface }]}>
+                        {biometricType === 'facial'
+                          ? 'Sign in with Face ID'
+                          : biometricType === 'fingerprint'
+                            ? 'Sign in with Fingerprint'
+                            : 'Sign in with Biometrics'}
+                      </Text>
+                    </>
+                  )}
+                </Pressable>
+
+                <View style={styles.divider}>
+                  <View style={[styles.dividerLine, { backgroundColor: theme.colors.border }]} />
+                  <Text style={[styles.dividerText, { color: theme.colors.textMuted }]}>
+                    Or continue with password
+                  </Text>
+                  <View style={[styles.dividerLine, { backgroundColor: theme.colors.border }]} />
+                </View>
+              </>
+            )}
 
           <View style={styles.formGroup}>
             <Text style={[styles.label, { color: theme.colors.textSecondary }]}>Email</Text>
@@ -105,6 +255,22 @@ export default function SignInScreen() {
             />
           </View>
 
+          <View style={styles.rememberMeRow}>
+            <Switch
+              value={rememberMe}
+              onValueChange={setRememberMe}
+              trackColor={{
+                false: theme.colors.border,
+                true: theme.colors.primary,
+              }}
+              thumbColor={theme.colors.surface}
+              ios_backgroundColor={theme.colors.border}
+            />
+            <Text style={[styles.rememberMeText, { color: theme.colors.textSecondary }]}>
+              Remember me
+            </Text>
+          </View>
+
           {displayError ? (
             <View style={[styles.errorBox, { backgroundColor: theme.colors.error }]}>
               <Text style={[styles.errorText, { color: theme.colors.surface }]}>{displayError}</Text>
@@ -139,10 +305,14 @@ export default function SignInScreen() {
         </View>
       </View>
     </KeyboardAvoidingView>
+    </LinearGradient>
   );
 }
 
 const styles = StyleSheet.create({
+  gradient: {
+    flex: 1,
+  },
   container: {
     flex: 1,
   },
@@ -155,23 +325,67 @@ const styles = StyleSheet.create({
   card: {
     width: '100%',
     maxWidth: 420,
-    borderRadius: 20,
-    borderWidth: 1,
-    padding: 28,
+    borderRadius: 24,
+    padding: 32,
     gap: 20,
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 8,
+    },
+    shadowOpacity: 0.25,
+    shadowRadius: 16,
+    elevation: 12,
   },
   logoContainer: {
     alignItems: 'center',
-    marginBottom: 8,
+    marginBottom: 12,
   },
   logo: {
-    width: 100,
-    height: 100,
+    width: 140,
+    height: 140,
   },
   title: {
-    fontSize: 26,
-    fontWeight: '600',
+    fontSize: 32,
+    fontWeight: '700',
     textAlign: 'center',
+    marginBottom: 8,
+  },
+  biometricButton: {
+    marginTop: 8,
+    paddingVertical: 18,
+    borderRadius: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 12,
+    shadowColor: '#0575E6',
+    shadowOffset: {
+      width: 0,
+      height: 4,
+    },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 6,
+  },
+  biometricButtonText: {
+    fontSize: 17,
+    fontWeight: '700',
+    letterSpacing: 0.5,
+  },
+  divider: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    marginVertical: 8,
+  },
+  dividerLine: {
+    flex: 1,
+    height: 1,
+  },
+  dividerText: {
+    fontSize: 13,
+    fontWeight: '500',
   },
   subtitle: {
     fontSize: 16,
@@ -196,10 +410,20 @@ const styles = StyleSheet.create({
   },
   input: {
     borderWidth: 1,
-    borderRadius: 14,
-    paddingVertical: 14,
+    borderRadius: 12,
+    paddingVertical: 16,
     paddingHorizontal: 16,
     fontSize: 16,
+  },
+  rememberMeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    marginTop: 4,
+  },
+  rememberMeText: {
+    fontSize: 15,
+    fontWeight: '500',
   },
   errorBox: {
     borderRadius: 12,
@@ -213,18 +437,27 @@ const styles = StyleSheet.create({
   forgotPassword: {
     textAlign: 'right',
     fontSize: 14,
-    fontWeight: '500',
+    fontWeight: '600',
   },
   primaryButton: {
-    marginTop: 8,
-    paddingVertical: 16,
-    borderRadius: 14,
+    marginTop: 12,
+    paddingVertical: 18,
+    borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
+    shadowColor: '#0575E6',
+    shadowOffset: {
+      width: 0,
+      height: 4,
+    },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 6,
   },
   primaryButtonText: {
-    fontSize: 16,
-    fontWeight: '600',
+    fontSize: 17,
+    fontWeight: '700',
+    letterSpacing: 0.5,
   },
   footer: {
     flexDirection: 'row',

@@ -25,41 +25,79 @@ BoothBrain is an Expo React Native app for managing vendor booth inventory and s
 - All major files now under 1,300 lines (most under 200 lines)
 - Created clear separation of concerns with dedicated service layers
 
-## Current Session (2025-11-17 - Login UI & Biometric Settings)
-- ✅ **Enhanced Login Screen** 🎨
-  - Added BoothBrain logo (100×100px) to login screen
-  - Centered title and subtitle text for better visual balance
-  - Updated `app/auth/sign-in.tsx` with professional branding
-  - Fixed ESLint config to allow `require()` for image assets
+## Current Session (2025-11-17 - Login UI Enhancement & Biometric Features)
+- ✅ **Modern Login Screen Design** 🎨
+  - Added professional Ocean Blue gradient background (`#0575E6` → `#021B79`)
+  - Integrated transparent BoothBrain logo (BBtrans.png, 140×140px)
+  - Enhanced card design with shadows and elevation for depth
+  - Larger, bolder typography (32px title, weight 700)
+  - Improved spacing and modern styling throughout
+  - Fixed path to use `../../misc/BBtrans.png` (transparent logo)
+  - Updated `app/auth/sign-in.tsx` with LinearGradient component
 
-- ✅ **Implemented Biometric Settings Toggle** 🔐
+- ✅ **Remember Me Feature** 💾
+  - Added toggle switch for "Remember me" on login screen
+  - Saves user email to AsyncStorage when enabled
+  - Auto-loads saved email on app restart
+  - Users only need to enter password on subsequent logins
+  - Clean, accessible switch UI matching app theme
+
+- ✅ **Biometric Login on Login Screen** 🔐
+  - Added "Sign in with Face ID/Fingerprint" button to login screen
+  - Shows device-specific icon and label (Face ID icon for facial, fingerprint icon for touch)
+  - Only appears when biometrics are enabled in Settings AND user has previously logged in
+  - One-tap biometric authentication for instant access
+  - Graceful fallback with "Or continue with password" divider
+  - Securely uses existing Supabase session tokens (no password storage)
+  - Session refresh on successful biometric auth
+
+- ✅ **Biometric Security Settings** 🛡️
   - Created `src/utils/biometricPreferences.ts` - User preference storage with AsyncStorage
   - Created `src/components/settings/SecuritySection.tsx` - New Security settings UI component
   - Updated `src/utils/biometrics.ts` - Now checks both device capability AND user preference
   - Added Security section to Settings screen (below Password section)
   - Shows device-specific labels (Face ID/Touch ID/Fingerprint)
   - Displays helpful message if biometrics aren't available/enrolled
-  - User can now enable/disable biometric authentication on app resume
-  - Preference persists across app restarts
+  - User can enable/disable biometric authentication
+  - Preference controls both app-resume auth AND login screen button
+
+- ✅ **Enabled Real Firebase Crashlytics** 🔥
+  - Replaced mock implementation with real `@react-native-firebase/crashlytics`
+  - Used conditional `require()` to gracefully handle Expo Go environment
+  - Crashlytics works in production builds (TestFlight/App Store)
+  - Gracefully logs to console in Expo Go (no crashes)
+  - All crash reporting, events, user tracking now functional
+  - Updated `src/lib/services/firebase.ts` with production-ready implementation
 
 - ✅ **Documented Windows/WSL Development Workflow**
   - Added critical note: Always run `npm install` and `npm start` from Windows PowerShell
   - WSL installs Linux binaries that don't work in Windows PowerShell
   - Added troubleshooting steps for `'expo' is not recognized` error
+  - Added "Development Environment" section at top of CLAUDE.md
 
 - ✅ **Code Quality Verified**
   - TypeScript compilation: ✅ Zero errors (`npm run typecheck`)
   - ESLint: ✅ Zero errors (`npm run lint`)
   - Updated ESLint config to allow require() for image assets (.png, .jpg, etc.)
+  - Added ESLint disable comment for Firebase conditional require
+
+- 📝 **Files Created:**
+  - `src/utils/biometricPreferences.ts` - Biometric preference storage
+  - `src/components/settings/SecuritySection.tsx` - Security settings UI (198 lines)
 
 - 📝 **Files Modified:**
-  - `app/auth/sign-in.tsx` - Added logo and improved layout
-  - `src/utils/biometricPreferences.ts` - New file for preference storage
-  - `src/components/settings/SecuritySection.tsx` - New Security settings component
+  - `app/auth/sign-in.tsx` - Modern design, gradient, logo, Remember Me, biometric login
   - `src/utils/biometrics.ts` - Updated to check user preferences
-  - `app/(tabs)/settings.tsx` - Added SecuritySection import and render
+  - `app/(tabs)/settings.tsx` - Added SecuritySection
   - `eslint.config.mjs` - Added exception for image requires
-  - `CLAUDE.md` - Added Windows/WSL development notes
+  - `src/lib/services/firebase.ts` - Enabled real Crashlytics with conditional import
+  - `CLAUDE.md` - Added Windows/WSL development notes and current session
+
+- 🎯 **Ready for Next TestFlight Build:**
+  - All login UX improvements ready for production
+  - Firebase Crashlytics will automatically work in next build
+  - Biometric authentication fully functional
+  - Modern, professional login experience
 
 ## Previous Session #1 (2025-11-15 - Build Debug & Production Build)
 - ✅ **Fixed ALL EAS Build Issues - 5 Critical Bugs Resolved!** 🎉
