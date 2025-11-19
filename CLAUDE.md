@@ -43,13 +43,23 @@ BoothBrain is an Expo React Native app for managing vendor booth inventory and s
   - Clean, accessible switch UI matching app theme
 
 - ✅ **Biometric Login on Login Screen** 🔐
-  - Added "Sign in with Face ID/Fingerprint" button to login screen
-  - Shows device-specific icon and label (Face ID icon for facial, fingerprint icon for touch)
-  - Only appears when biometrics are enabled in Settings AND user has previously logged in
+  - Added "Sign in with Biometrics" button to login screen
+  - Shows device-specific icon (Face ID scan icon for facial, fingerprint icon for touch)
+  - Generic button text: "Sign in with Biometrics" (not device-specific)
+  - **IMPORTANT:** Button only appears when ALL conditions are met:
+    1. Biometrics are enabled in Settings
+    2. Device has biometric hardware enrolled
+    3. **User has a valid saved Supabase session** (not just saved email)
   - One-tap biometric authentication for instant access
   - Graceful fallback with "Or continue with password" divider
   - Securely uses existing Supabase session tokens (no password storage)
   - Session refresh on successful biometric auth
+
+  **Known Limitation in Expo Go:**
+  - In development (Expo Go), sessions may not persist reliably between app restarts
+  - The biometric login button may not appear until after first login in current session
+  - Works reliably in production builds (TestFlight/App Store)
+  - To test: Log in with password → Sign out → Button should appear on login screen
 
 - ✅ **Biometric Security Settings** 🛡️
   - Created `src/utils/biometricPreferences.ts` - User preference storage with AsyncStorage
@@ -74,6 +84,12 @@ BoothBrain is an Expo React Native app for managing vendor booth inventory and s
   - WSL installs Linux binaries that don't work in Windows PowerShell
   - Added troubleshooting steps for `'expo' is not recognized` error
   - Added "Development Environment" section at top of CLAUDE.md
+
+- ✅ **Biometric Login Fixes** 🔧
+  - Fixed "No saved session found" error by requiring valid session (not just saved email)
+  - Changed button text from device-specific to generic "Sign in with Biometrics"
+  - Updated session check logic to only show button when session exists
+  - Documented known limitation in Expo Go regarding session persistence
 
 - ✅ **Code Quality Verified**
   - TypeScript compilation: ✅ Zero errors (`npm run typecheck`)

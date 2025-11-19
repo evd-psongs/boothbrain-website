@@ -70,8 +70,8 @@ export default function SignInScreen() {
 
         // Can use biometric login if:
         // 1. Biometrics are available and enabled
-        // 2. User has a saved session OR saved email (previous login)
-        const canUseBiometric = available && preference && (!!session || !!savedEmail);
+        // 2. User has a valid saved session (required for token refresh)
+        const canUseBiometric = available && preference && !!session;
         setCanUseBiometricLogin(canUseBiometric);
       } catch (error) {
         console.error('Failed to initialize login screen:', error);
@@ -196,11 +196,7 @@ export default function SignInScreen() {
                         color={theme.colors.surface}
                       />
                       <Text style={[styles.biometricButtonText, { color: theme.colors.surface }]}>
-                        {biometricType === 'facial'
-                          ? 'Sign in with Face ID'
-                          : biometricType === 'fingerprint'
-                            ? 'Sign in with Fingerprint'
-                            : 'Sign in with Biometrics'}
+                        Sign in with Biometrics
                       </Text>
                     </>
                   )}
