@@ -27,7 +27,7 @@ import {
 import { getBiometricPreference } from '@/utils/biometricPreferences';
 import { supabase } from '@/lib/supabase';
 
-const logoImage = require('../../misc/BBtrans.png') as number;
+const logoImage = require('../../assets/BBtrans.png') as number;
 
 export default function SignInScreen() {
   const router = useRouter();
