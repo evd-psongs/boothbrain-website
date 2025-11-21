@@ -52,33 +52,35 @@ export function PasswordSection({ theme, updatePassword, showFeedback }: Passwor
         subtitleColor={theme.colors.textSecondary}
       />
 
-      <InputField
-        label="New password"
-        value={newPassword}
-        onChange={setNewPassword}
-        placeholder="New password"
-        placeholderColor={theme.colors.textMuted}
-        borderColor={theme.colors.border}
-        backgroundColor={theme.colors.surface}
-        textColor={theme.colors.textPrimary}
-        secureTextEntry
-        textContentType="newPassword"
-        autoCapitalize="none"
-      />
+      <View style={styles.inputsContainer}>
+        <InputField
+          label=""
+          value={newPassword}
+          onChange={setNewPassword}
+          placeholder="New password"
+          placeholderColor={theme.colors.textMuted}
+          borderColor={theme.colors.border}
+          backgroundColor={theme.colors.surface}
+          textColor={theme.colors.textPrimary}
+          secureTextEntry
+          textContentType="newPassword"
+          autoCapitalize="none"
+        />
 
-      <InputField
-        label="Confirm password"
-        value={confirmPassword}
-        onChange={setConfirmPassword}
-        placeholder="Confirm password"
-        placeholderColor={theme.colors.textMuted}
-        borderColor={theme.colors.border}
-        backgroundColor={theme.colors.surface}
-        textColor={theme.colors.textPrimary}
-        secureTextEntry
-        textContentType="password"
-        autoCapitalize="none"
-      />
+        <InputField
+          label=""
+          value={confirmPassword}
+          onChange={setConfirmPassword}
+          placeholder="Confirm password"
+          placeholderColor={theme.colors.textMuted}
+          borderColor={theme.colors.border}
+          backgroundColor={theme.colors.surface}
+          textColor={theme.colors.textPrimary}
+          secureTextEntry
+          textContentType="password"
+          autoCapitalize="none"
+        />
+      </View>
 
       <PrimaryButton
         title="Update password"
@@ -97,5 +99,9 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderRadius: 16,
     padding: 20,
+    gap: 20,
+  },
+  inputsContainer: {
+    gap: 8,
   },
 });

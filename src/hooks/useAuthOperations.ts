@@ -79,11 +79,13 @@ export function useAuthOperations({
         setSession(response.session);
         const authUser = await buildAuthUser(response.session.user);
         setUser(authUser);
+
+        return { data: response, error: null };
       } catch (err: any) {
         console.error('Sign in error:', err);
         const message = err?.message ?? 'Failed to sign in';
         setError(message);
-        throw err;
+        return { data: null, error: err };
       } finally {
         setLoading(false);
       }

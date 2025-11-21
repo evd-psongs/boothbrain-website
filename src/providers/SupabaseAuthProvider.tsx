@@ -17,7 +17,7 @@ type AuthContextValue = {
   loading: boolean;
   error: string | null;
   signUp: (data: SignUpData) => Promise<void>;
-  signIn: (data: SignInData) => Promise<void>;
+  signIn: (data: SignInData) => Promise<{ data: { session: Session | null } | null; error: any }>;
   signOut: () => Promise<void>;
   resetPassword: (email: string) => Promise<void>;
   updatePassword: (newPassword: string) => Promise<void>;
@@ -62,48 +62,96 @@ export function SupabaseAuthProvider({ children }: { children: React.ReactNode }
           return;
         }
 
-        // On iOS production or Android: try to get cached session first for fast startup
-        if (isIOS) {
-          const cachedSessionStr = await AsyncStorage.getItem('sb-auth-token').catch(() => null);
-          if (cachedSessionStr) {
-            try {
-              const cachedSession = JSON.parse(cachedSessionStr);
-              if (cachedSession?.currentSession) {
-                // Set cached session immediately for fast UI response
-                setSession(cachedSession.currentSession);
+        // Try to get cached session first for fast startup (works for both iOS and Android)
+        const cachedSessionStr = await AsyncStorage.getItem('sb-auth-token').catch(() => null);
+        if (cachedSessionStr) {
+          try {
+            const cachedData = JSON.parse(cachedSessionStr);
+            // Handle both { currentSession: ... } format and raw Session object
+            const cachedSession = cachedData.currentSession || cachedData;
+
+            if (cachedSession?.access_token && cachedSession?.user) {
+              console.log('📱 Found cached session in AsyncStorage');
+
+              // Check if biometrics are enabled
+              // If enabled, we DO NOT auto-login. We let the user go to the login screen
+              // so they can click "Sign in with Biometrics" and authenticate.
+              const useBiometrics = await shouldUseBiometrics();
+
+              if (useBiometrics) {
+                console.log('🔒 Biometrics enabled, skipping auto-login to force authentication');
                 setLoading(false);
-
-                // Try to refresh the session in background (Silent Token Refresh with timeout)
-                try {
-                  const refreshResult = await withTimeout(
-                    supabase.auth.refreshSession(),
-                    getTimeout('session', Platform.OS, isDevelopment),
-                    'Token refresh timed out'
-                  );
-
-                  if (refreshResult.data?.session) {
-                    // Token refresh succeeded - user stays logged in
-                    console.log('✅ Silent token refresh succeeded');
-                    setSession(refreshResult.data.session);
-                    const authUser = await buildAuthUser(refreshResult.data.session.user);
-                    setUser(authUser);
-                  } else if (refreshResult.error) {
-                    console.warn('Token refresh failed:', refreshResult.error.message);
-                    // Keep cached session - user can continue using app
-                  }
-                } catch (refreshErr) {
-                  // Refresh timed out or failed - keep using cached session
-                  console.warn('Silent refresh failed, keeping cached session:', getErrorMessage(refreshErr));
-                  // User stays logged in with cached data
-                  // They'll get a fresh token when they perform an action that requires auth
-                }
-
                 initializingRef.current = false;
-                return; // Exit early with cached session
+                return;
               }
-            } catch (err) {
-              console.warn('Failed to parse cached session:', err);
+
+              // IMPORTANT: Initialize Supabase client with the session!
+              // Just setting React state isn't enough for the SDK to know we're logged in.
+              const { error: restoreError } = await supabase.auth.setSession(cachedSession);
+
+              if (restoreError) {
+                console.warn('Failed to restore session to Supabase client:', restoreError.message);
+
+                // Fallback: Try to use the refresh token directly
+                if (cachedSession.refresh_token) {
+                  console.log('🔄 Attempting to restore via refresh token...');
+                  const { data: refreshData, error: refreshError } = await supabase.auth.refreshSession({
+                    refresh_token: cachedSession.refresh_token,
+                  });
+
+                  if (!refreshError && refreshData.session) {
+                    // Update the cached session with the new one
+                    setSession(refreshData.session);
+                    await AsyncStorage.setItem('sb-auth-token', JSON.stringify(refreshData.session));
+
+                    // We have a valid session now, so we can proceed to load the user
+                    const authUser = await buildAuthUser(refreshData.session.user);
+                    setUser(authUser);
+                    setLoading(false);
+                    initializingRef.current = false;
+                    return;
+                  } else {
+                    console.warn('❌ Refresh token restore failed:', refreshError?.message);
+                  }
+                }
+              }
+
+              // Set cached session immediately for fast UI response
+              setSession(cachedSession);
+              setLoading(false);
+
+              // Try to refresh the session in background (Silent Token Refresh with timeout)
+              try {
+                const refreshResult = await withTimeout(
+                  supabase.auth.refreshSession(),
+                  getTimeout('session', Platform.OS, isDevelopment),
+                  'Token refresh timed out'
+                );
+
+                if (refreshResult.data?.session) {
+                  // Token refresh succeeded - user stays logged in
+                  console.log('✅ Silent token refresh succeeded');
+                  setSession(refreshResult.data.session);
+                  const authUser = await buildAuthUser(refreshResult.data.session.user);
+                  setUser(authUser);
+
+                  // Update cache with fresh session
+                  await AsyncStorage.setItem('sb-auth-token', JSON.stringify(refreshResult.data.session));
+                } else if (refreshResult.error) {
+                  console.warn('Token refresh failed:', refreshResult.error.message);
+                  // Keep cached session - user can continue using app
+                }
+              } catch (refreshErr) {
+                // Refresh timed out or failed - keep using cached session
+                console.warn('Silent refresh failed, keeping cached session:', getErrorMessage(refreshErr));
+                // User stays logged in with cached data
+              }
+
+              initializingRef.current = false;
+              return; // Exit early with cached session
             }
+          } catch (err) {
+            console.warn('Failed to parse cached session:', err);
           }
         }
 
@@ -144,8 +192,24 @@ export function SupabaseAuthProvider({ children }: { children: React.ReactNode }
   useEffect(() => {
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange(async (_event, newSession) => {
+    } = supabase.auth.onAuthStateChange(async (event, newSession) => {
       setSession(newSession);
+
+      // Manually sync session to AsyncStorage for Expo Go persistence
+      if (newSession) {
+        try {
+          await AsyncStorage.setItem('sb-auth-token', JSON.stringify(newSession));
+        } catch (e) {
+          console.warn('Failed to save session to storage', e);
+        }
+      } else if (event === 'SIGNED_OUT') {
+        try {
+          await AsyncStorage.removeItem('sb-auth-token');
+        } catch (e) {
+          console.warn('Failed to remove session from storage', e);
+        }
+      }
+
       if (newSession?.user) {
         try {
           const authUser = await buildAuthUser(newSession.user);

@@ -2,11 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { View, Text, StyleSheet, Switch, ActivityIndicator } from 'react-native';
 import { SectionHeading, type FeedbackState } from '@/components/common';
 import type { Theme } from '@/providers/ThemeProvider';
-import {
-  isBiometricAvailable,
-  getBiometricType,
-  type BiometricType,
-} from '@/utils/biometrics';
+import { isBiometricAvailable } from '@/utils/biometrics';
 import { getBiometricPreference, setBiometricPreference } from '@/utils/biometricPreferences';
 
 type SecuritySectionProps = {
@@ -16,7 +12,6 @@ type SecuritySectionProps = {
 
 export function SecuritySection({ theme, showFeedback }: SecuritySectionProps) {
   const [biometricAvailable, setBiometricAvailable] = useState(false);
-  const [biometricType, setBiometricType] = useState<BiometricType>('none');
   const [biometricEnabled, setBiometricEnabled] = useState(false);
   const [loading, setLoading] = useState(true);
   const [updating, setUpdating] = useState(false);
@@ -26,13 +21,11 @@ export function SecuritySection({ theme, showFeedback }: SecuritySectionProps) {
     const loadBiometricSettings = async () => {
       setLoading(true);
       try {
-        const [available, type, enabled] = await Promise.all([
+        const [available, enabled] = await Promise.all([
           isBiometricAvailable(),
-          getBiometricType(),
           getBiometricPreference(),
         ]);
         setBiometricAvailable(available);
-        setBiometricType(type);
         setBiometricEnabled(enabled);
       } catch (error) {
         console.error('Failed to load biometric settings:', error);
@@ -70,10 +63,7 @@ export function SecuritySection({ theme, showFeedback }: SecuritySectionProps) {
   );
 
   const getBiometricLabel = (): string => {
-    if (biometricType === 'facial') return 'Face ID';
-    if (biometricType === 'fingerprint') return 'Touch ID / Fingerprint';
-    if (biometricType === 'iris') return 'Iris Scan';
-    return 'Biometric Authentication';
+    return 'Enable Biometrics';
   };
 
   const getBiometricDescription = (): string => {
@@ -128,7 +118,7 @@ export function SecuritySection({ theme, showFeedback }: SecuritySectionProps) {
           </Text>
         </View>
         <Switch
-          value={biometricEnabled}
+          value={biometricEnabled && biometricAvailable}
           onValueChange={handleToggleBiometric}
           disabled={!biometricAvailable || updating}
           trackColor={{

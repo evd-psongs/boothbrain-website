@@ -171,9 +171,9 @@ export type TimeoutConfig = {
 };
 
 const DEFAULT_TIMEOUTS: TimeoutConfig = {
-  session: 10000,
-  profile: 10000,
-  subscription: 10000,
+  session: 10000, // Keep session timeout a bit longer
+  profile: 5000,  // Fail fast for profile (5s) so user isn't waiting
+  subscription: 5000,
   default: 10000,
 };
 

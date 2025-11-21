@@ -47,7 +47,7 @@ export function InputField({
 }: InputFieldProps) {
   return (
     <View style={styles.inputGroup}>
-      <Text style={[styles.inputLabel, { color: placeholderColor }]}>{label}</Text>
+      {!!label && <Text style={[styles.inputLabel, { color: placeholderColor }]}>{label}</Text>}
       <TextInput
         value={value}
         onChangeText={onChange}

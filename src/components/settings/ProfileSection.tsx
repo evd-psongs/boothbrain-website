@@ -24,19 +24,16 @@ interface ProfileSectionProps {
 
 export function ProfileSection({ theme, user, refreshSession, showFeedback }: ProfileSectionProps) {
   const [fullName, setFullName] = useState(user?.profile?.fullName ?? '');
-  const [phone, setPhone] = useState(user?.profile?.phone ?? '');
   const [savingProfile, setSavingProfile] = useState(false);
 
   useEffect(() => {
     setFullName(user?.profile?.fullName ?? '');
-    setPhone(user?.profile?.phone ?? '');
-  }, [user?.profile?.fullName, user?.profile?.phone]);
+  }, [user?.profile?.fullName]);
 
   const profileDirty = useMemo(() => {
     const initialName = user?.profile?.fullName ?? '';
-    const initialPhone = user?.profile?.phone ?? '';
-    return fullName !== initialName || phone !== initialPhone;
-  }, [fullName, phone, user?.profile?.fullName, user?.profile?.phone]);
+    return fullName !== initialName;
+  }, [fullName, user?.profile?.fullName]);
 
   const handleSaveProfile = useCallback(async () => {
     if (!user?.id) return;
@@ -44,7 +41,6 @@ export function ProfileSection({ theme, user, refreshSession, showFeedback }: Pr
     try {
       await updateProfile(user.id, {
         fullName: fullName.trim() || null,
-        phone: phone.trim() || null,
       });
       await refreshSession();
       showFeedback({ type: 'success', message: 'Profile updated successfully.' });
@@ -54,7 +50,7 @@ export function ProfileSection({ theme, user, refreshSession, showFeedback }: Pr
     } finally {
       setSavingProfile(false);
     }
-  }, [user?.id, fullName, phone, refreshSession, showFeedback]);
+  }, [user?.id, fullName, refreshSession, showFeedback]);
 
   if (!user) return null;
 
@@ -86,19 +82,6 @@ export function ProfileSection({ theme, user, refreshSession, showFeedback }: Pr
         autoCapitalize="words"
       />
 
-      <InputField
-        label="Phone number"
-        value={phone}
-        onChange={setPhone}
-        placeholder="Mobile number"
-        placeholderColor={theme.colors.textMuted}
-        borderColor={theme.colors.border}
-        backgroundColor={theme.colors.surface}
-        textColor={theme.colors.textPrimary}
-        keyboardType="phone-pad"
-        textContentType="telephoneNumber"
-      />
-
       <PrimaryButton
         title="Save profile"
         onPress={handleSaveProfile}
@@ -116,9 +99,10 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderRadius: 16,
     padding: 20,
+    gap: 20,
   },
   inputGroup: {
-    marginBottom: 14,
+    // marginBottom removed as card gap handles spacing
   },
   inputLabel: {
     fontSize: 13,

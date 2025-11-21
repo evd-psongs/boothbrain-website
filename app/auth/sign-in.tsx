@@ -68,11 +68,18 @@ export default function SignInScreen() {
         // Check if user has a valid session (for biometric login)
         const { data: { session } } = await supabase.auth.getSession();
 
+        // In Expo Go, getSession() might return null even if we have a stored session
+        // So we also check AsyncStorage directly as a fallback
+        const storedSession = await AsyncStorage.getItem('sb-auth-token');
+        const hasStoredSession = !!session || !!storedSession;
+
         // Can use biometric login if:
         // 1. Biometrics are available and enabled
         // 2. User has a valid saved session (required for token refresh)
-        const canUseBiometric = available && preference && !!session;
+        const canUseBiometric = available && preference && hasStoredSession;
         setCanUseBiometricLogin(canUseBiometric);
+
+
       } catch (error) {
         console.error('Failed to initialize login screen:', error);
       }
@@ -96,22 +103,76 @@ export default function SignInScreen() {
       }
 
       // Check if we have a valid session
-      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+      // In Expo Go, we might need to restore it from AsyncStorage manually
+      const storedSessionStr = await AsyncStorage.getItem('sb-auth-token');
 
-      if (sessionError || !session) {
+      if (!storedSessionStr) {
         setLocalError('No saved session found. Please sign in with your password.');
         setBiometricLoading(false);
         return;
       }
 
-      // Refresh the session
-      const { error: refreshError } = await supabase.auth.refreshSession();
+      const storedSession = JSON.parse(storedSessionStr);
+      console.log('Restoring session from storage...');
+      console.log('Stored Session Keys:', Object.keys(storedSession));
+      if (storedSession.user) console.log('User Keys:', Object.keys(storedSession.user));
+      console.log('Has Access Token:', !!storedSession.access_token);
+      console.log('Has Refresh Token:', !!storedSession.refresh_token);
 
-      if (refreshError) {
-        setLocalError('Session expired. Please sign in with your password.');
+      let session = null;
+      let error = null;
+
+      // Method 1: Try setSession first
+      const { data: setSessionData, error: setSessionError } = await supabase.auth.setSession(storedSession);
+
+      if (!setSessionError && setSessionData.session) {
+        session = setSessionData.session;
+        console.log('Session restored via setSession');
+      } else {
+        console.warn('setSession failed, trying refresh token:', setSessionError?.message);
+
+        // Method 2: Try refreshing with the refresh token directly
+        if (storedSession.refresh_token) {
+          const { data: refreshData, error: refreshError } = await supabase.auth.refreshSession({
+            refresh_token: storedSession.refresh_token,
+          });
+
+          if (!refreshError && refreshData.session) {
+            session = refreshData.session;
+            console.log('Session restored via refresh_token');
+
+            // Update stored session with new one
+            await AsyncStorage.setItem('sb-auth-token', JSON.stringify(session));
+          } else {
+            error = refreshError;
+          }
+        } else {
+          error = setSessionError || new Error('No refresh token found');
+        }
+      }
+
+      if (error || !session) {
+        console.error('Biometric login failed:', error);
+
+        // If the token is invalid/expired, we must clear it so the user
+        // is forced to sign in with password to get a new one.
+        if (error?.message?.includes('Invalid Refresh Token') ||
+          error?.message?.includes('Refresh Token Not Found') ||
+          error?.message?.includes('Auth session missing')) {
+
+          console.log('Clearing invalid session from storage...');
+          await AsyncStorage.removeItem('sb-auth-token');
+          setCanUseBiometricLogin(false);
+          setLocalError('Biometric login expired. Please sign in with your password to re-enable.');
+        } else {
+          setLocalError(`Login failed: ${error?.message || 'Unknown error'}`);
+        }
+
         setBiometricLoading(false);
         return;
       }
+
+      console.log('Session valid, proceeding...');
 
       // Success! Navigate to home
       router.replace('/(tabs)/home');
@@ -141,7 +202,28 @@ export default function SignInScreen() {
         await AsyncStorage.removeItem('@booth_brain_saved_email');
       }
 
-      await signIn({ email: trimmedEmail, password });
+      const { data, error } = await signIn({ email: trimmedEmail, password });
+
+      if (error) throw error;
+
+      // Manually save session for Expo Go biometric support
+      // We do this here AND in the provider to be doubly sure
+      if (data?.session) {
+        console.log('Saving session manually to AsyncStorage (Sign In)...');
+        try {
+          await AsyncStorage.setItem('sb-auth-token', JSON.stringify(data.session));
+          console.log('Session saved successfully!');
+
+          // Verify immediately
+          const verify = await AsyncStorage.getItem('sb-auth-token');
+          console.log('Immediate verification:', verify ? 'EXISTS' : 'MISSING');
+        } catch (saveError) {
+          console.error('FAILED to save session:', saveError);
+        }
+      } else {
+        console.warn('No session data to save manually');
+      }
+
       router.replace('/(tabs)/home');
     } catch (err) {
       console.error('Sign in failed', err);
@@ -212,95 +294,95 @@ export default function SignInScreen() {
               </>
             )}
 
-          <View style={styles.formGroup}>
-            <Text style={[styles.label, { color: theme.colors.textSecondary }]}>Email</Text>
-            <TextInput
-              value={email}
-              onChangeText={setEmail}
-              autoCapitalize="none"
-              keyboardType="email-address"
-              placeholder="name@example.com"
-              placeholderTextColor={theme.colors.textMuted}
-              style={[
-                styles.input,
-                { borderColor: theme.colors.border, color: theme.colors.textPrimary, backgroundColor: theme.colors.surfaceMuted },
-              ]}
-            />
-          </View>
+            <View style={styles.formGroup}>
+              <Text style={[styles.label, { color: theme.colors.textSecondary }]}>Email</Text>
+              <TextInput
+                value={email}
+                onChangeText={setEmail}
+                autoCapitalize="none"
+                keyboardType="email-address"
+                placeholder="name@example.com"
+                placeholderTextColor={theme.colors.textMuted}
+                style={[
+                  styles.input,
+                  { borderColor: theme.colors.border, color: theme.colors.textPrimary, backgroundColor: theme.colors.surfaceMuted },
+                ]}
+              />
+            </View>
 
-          <View style={styles.formGroup}>
-            <View style={styles.labelRow}>
-              <Text style={[styles.label, { color: theme.colors.textSecondary }]}>Password</Text>
-              <Text
-                style={[styles.toggle, { color: theme.colors.primary }]}
-                onPress={() => setShowPassword((prev) => !prev)}
-              >
-                {showPassword ? 'Hide' : 'Show'}
+            <View style={styles.formGroup}>
+              <View style={styles.labelRow}>
+                <Text style={[styles.label, { color: theme.colors.textSecondary }]}>Password</Text>
+                <Text
+                  style={[styles.toggle, { color: theme.colors.primary }]}
+                  onPress={() => setShowPassword((prev) => !prev)}
+                >
+                  {showPassword ? 'Hide' : 'Show'}
+                </Text>
+              </View>
+              <TextInput
+                value={password}
+                onChangeText={setPassword}
+                secureTextEntry={!showPassword}
+                placeholder="••••••••"
+                placeholderTextColor={theme.colors.textMuted}
+                style={[
+                  styles.input,
+                  { borderColor: theme.colors.border, color: theme.colors.textPrimary, backgroundColor: theme.colors.surfaceMuted },
+                ]}
+              />
+            </View>
+
+            <View style={styles.rememberMeRow}>
+              <Switch
+                value={rememberMe}
+                onValueChange={setRememberMe}
+                trackColor={{
+                  false: theme.colors.border,
+                  true: theme.colors.primary,
+                }}
+                thumbColor={theme.colors.surface}
+                ios_backgroundColor={theme.colors.border}
+              />
+              <Text style={[styles.rememberMeText, { color: theme.colors.textSecondary }]}>
+                Remember me
               </Text>
             </View>
-            <TextInput
-              value={password}
-              onChangeText={setPassword}
-              secureTextEntry={!showPassword}
-              placeholder="••••••••"
-              placeholderTextColor={theme.colors.textMuted}
-              style={[
-                styles.input,
-                { borderColor: theme.colors.border, color: theme.colors.textPrimary, backgroundColor: theme.colors.surfaceMuted },
-              ]}
-            />
-          </View>
 
-          <View style={styles.rememberMeRow}>
-            <Switch
-              value={rememberMe}
-              onValueChange={setRememberMe}
-              trackColor={{
-                false: theme.colors.border,
-                true: theme.colors.primary,
-              }}
-              thumbColor={theme.colors.surface}
-              ios_backgroundColor={theme.colors.border}
-            />
-            <Text style={[styles.rememberMeText, { color: theme.colors.textSecondary }]}>
-              Remember me
-            </Text>
-          </View>
+            {displayError ? (
+              <View style={[styles.errorBox, { backgroundColor: theme.colors.error }]}>
+                <Text style={[styles.errorText, { color: theme.colors.surface }]}>{displayError}</Text>
+              </View>
+            ) : null}
 
-          {displayError ? (
-            <View style={[styles.errorBox, { backgroundColor: theme.colors.error }]}>
-              <Text style={[styles.errorText, { color: theme.colors.surface }]}>{displayError}</Text>
-            </View>
-          ) : null}
-
-          <Link href="/auth/reset-password" asChild>
-            <Text style={[styles.forgotPassword, { color: theme.colors.primary }]}>Forgot password?</Text>
-          </Link>
-
-          <Pressable
-            style={[
-              styles.primaryButton,
-              { backgroundColor: theme.colors.primary, opacity: loading ? 0.8 : 1 },
-            ]}
-            onPress={handleSignIn}
-            disabled={loading}
-          >
-            {loading ? (
-              <ActivityIndicator color={theme.colors.surface} />
-            ) : (
-              <Text style={[styles.primaryButtonText, { color: theme.colors.surface }]}>Sign in</Text>
-            )}
-          </Pressable>
-
-          <View style={styles.footer}>
-            <Text style={[styles.footerText, { color: theme.colors.textMuted }]}>New to BoothBrain?</Text>
-            <Link href="/auth/sign-up" asChild>
-              <Text style={[styles.footerLink, { color: theme.colors.primary }]}>Create account</Text>
+            <Link href="/auth/reset-password" asChild>
+              <Text style={[styles.forgotPassword, { color: theme.colors.primary }]}>Forgot password?</Text>
             </Link>
+
+            <Pressable
+              style={[
+                styles.primaryButton,
+                { backgroundColor: theme.colors.primary, opacity: loading ? 0.8 : 1 },
+              ]}
+              onPress={handleSignIn}
+              disabled={loading}
+            >
+              {loading ? (
+                <ActivityIndicator color={theme.colors.surface} />
+              ) : (
+                <Text style={[styles.primaryButtonText, { color: theme.colors.surface }]}>Sign in</Text>
+              )}
+            </Pressable>
+
+            <View style={styles.footer}>
+              <Text style={[styles.footerText, { color: theme.colors.textMuted }]}>New to BoothBrain?</Text>
+              <Link href="/auth/sign-up" asChild>
+                <Text style={[styles.footerLink, { color: theme.colors.primary }]}>Create account</Text>
+              </Link>
+            </View>
           </View>
         </View>
-      </View>
-    </KeyboardAvoidingView>
+      </KeyboardAvoidingView>
     </LinearGradient>
   );
 }

@@ -9,12 +9,12 @@ const BIOMETRIC_PREFERENCE_KEY = '@booth_brain_biometric_enabled';
 export async function getBiometricPreference(): Promise<boolean> {
   try {
     const value = await AsyncStorage.getItem(BIOMETRIC_PREFERENCE_KEY);
-    // Default to true (enabled) if no preference is set
-    if (value === null) return true;
+    // Default to false (disabled) if no preference is set - explicit opt-in required
+    if (value === null) return false;
     return value === 'true';
   } catch (error) {
     console.warn('Failed to get biometric preference:', error);
-    return true; // Default to enabled on error
+    return false; // Default to disabled on error
   }
 }
 
