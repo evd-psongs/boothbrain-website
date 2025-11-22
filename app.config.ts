@@ -20,7 +20,6 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     googleServicesFile: './GoogleService-Info.plist',
     infoPlist: {
       ITSAppUsesNonExemptEncryption: false,
-      NSFaceIDUsageDescription: 'BoothBrain uses Face ID to securely authenticate you when you return to the app.',
     },
   },
   android: {
@@ -30,10 +29,6 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     },
     package: 'com.boothbrain.app',
     googleServicesFile: './google-services.json',
-    permissions: [
-      'USE_BIOMETRIC',
-      'USE_FINGERPRINT',
-    ],
   },
   androidNavigationBar: {
     backgroundColor: '#F5F6F8',
@@ -48,7 +43,6 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     'expo-secure-store',
     'expo-document-picker',
     'expo-camera',
-    'expo-local-authentication',
     [
       'expo-build-properties',
       {

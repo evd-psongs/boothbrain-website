@@ -10,6 +10,9 @@ import {
   Pressable,
   Image,
   Switch,
+  Modal,
+  TouchableWithoutFeedback,
+  Keyboard,
 } from 'react-native';
 import { Link, useRouter } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -19,13 +22,11 @@ import { Ionicons } from '@expo/vector-icons';
 import { useSupabaseAuth } from '@/providers/SupabaseAuthProvider';
 import { useTheme } from '@/providers/ThemeProvider';
 import {
-  isBiometricAvailable,
-  getBiometricType,
-  authenticateWithBiometrics,
-  type BiometricType
-} from '@/utils/biometrics';
-import { getBiometricPreference } from '@/utils/biometricPreferences';
-import { supabase } from '@/lib/supabase';
+  getAssuranceLevel,
+  getTwoFactorFactors,
+  challengeTwoFactor,
+  verifyTwoFactorCode,
+} from '@/utils/twoFactor';
 
 const logoImage = require('../../assets/BBtrans.png') as number;
 
@@ -39,150 +40,31 @@ export default function SignInScreen() {
   const [localError, setLocalError] = useState<string | null>(null);
   const [showPassword, setShowPassword] = useState(false);
   const [rememberMe, setRememberMe] = useState(false);
-  const [biometricType, setBiometricType] = useState<BiometricType>('none');
-  const [canUseBiometricLogin, setCanUseBiometricLogin] = useState(false);
-  const [biometricLoading, setBiometricLoading] = useState(false);
+
+  // 2FA state
+  const [show2FAModal, setShow2FAModal] = useState(false);
+  const [twoFactorCode, setTwoFactorCode] = useState('');
+  const [verifying2FA, setVerifying2FA] = useState(false);
+  const [factorId, setFactorId] = useState<string | null>(null);
+  const [challengeId, setChallengeId] = useState<string | null>(null);
 
   const displayError = localError || error;
 
-  // Load saved email and check biometric availability on mount
+  // Load saved email on mount
   useEffect(() => {
     const initialize = async () => {
       try {
-        // Load saved email
         const savedEmail = await AsyncStorage.getItem('@booth_brain_saved_email');
         if (savedEmail) {
           setEmail(savedEmail);
           setRememberMe(true);
         }
-
-        // Check biometric availability
-        const [available, type, preference] = await Promise.all([
-          isBiometricAvailable(),
-          getBiometricType(),
-          getBiometricPreference(),
-        ]);
-
-        setBiometricType(type);
-
-        // Check if user has a valid session (for biometric login)
-        const { data: { session } } = await supabase.auth.getSession();
-
-        // In Expo Go, getSession() might return null even if we have a stored session
-        // So we also check AsyncStorage directly as a fallback
-        const storedSession = await AsyncStorage.getItem('sb-auth-token');
-        const hasStoredSession = !!session || !!storedSession;
-
-        // Can use biometric login if:
-        // 1. Biometrics are available and enabled
-        // 2. User has a valid saved session (required for token refresh)
-        const canUseBiometric = available && preference && hasStoredSession;
-        setCanUseBiometricLogin(canUseBiometric);
-
-
       } catch (error) {
-        console.error('Failed to initialize login screen:', error);
+        console.error('Failed to load saved email:', error);
       }
     };
     void initialize();
   }, []);
-
-  const handleBiometricSignIn = useCallback(async () => {
-    setBiometricLoading(true);
-    setLocalError(null);
-    clearError();
-
-    try {
-      // Prompt for biometric authentication
-      const result = await authenticateWithBiometrics();
-
-      if (!result.success) {
-        setLocalError(result.error || 'Biometric authentication failed');
-        setBiometricLoading(false);
-        return;
-      }
-
-      // Check if we have a valid session
-      // In Expo Go, we might need to restore it from AsyncStorage manually
-      const storedSessionStr = await AsyncStorage.getItem('sb-auth-token');
-
-      if (!storedSessionStr) {
-        setLocalError('No saved session found. Please sign in with your password.');
-        setBiometricLoading(false);
-        return;
-      }
-
-      const storedSession = JSON.parse(storedSessionStr);
-      console.log('Restoring session from storage...');
-      console.log('Stored Session Keys:', Object.keys(storedSession));
-      if (storedSession.user) console.log('User Keys:', Object.keys(storedSession.user));
-      console.log('Has Access Token:', !!storedSession.access_token);
-      console.log('Has Refresh Token:', !!storedSession.refresh_token);
-
-      let session = null;
-      let error = null;
-
-      // Method 1: Try setSession first
-      const { data: setSessionData, error: setSessionError } = await supabase.auth.setSession(storedSession);
-
-      if (!setSessionError && setSessionData.session) {
-        session = setSessionData.session;
-        console.log('Session restored via setSession');
-      } else {
-        console.warn('setSession failed, trying refresh token:', setSessionError?.message);
-
-        // Method 2: Try refreshing with the refresh token directly
-        if (storedSession.refresh_token) {
-          const { data: refreshData, error: refreshError } = await supabase.auth.refreshSession({
-            refresh_token: storedSession.refresh_token,
-          });
-
-          if (!refreshError && refreshData.session) {
-            session = refreshData.session;
-            console.log('Session restored via refresh_token');
-
-            // Update stored session with new one
-            await AsyncStorage.setItem('sb-auth-token', JSON.stringify(session));
-          } else {
-            error = refreshError;
-          }
-        } else {
-          error = setSessionError || new Error('No refresh token found');
-        }
-      }
-
-      if (error || !session) {
-        console.error('Biometric login failed:', error);
-
-        // If the token is invalid/expired, we must clear it so the user
-        // is forced to sign in with password to get a new one.
-        if (error?.message?.includes('Invalid Refresh Token') ||
-          error?.message?.includes('Refresh Token Not Found') ||
-          error?.message?.includes('Auth session missing')) {
-
-          console.log('Clearing invalid session from storage...');
-          await AsyncStorage.removeItem('sb-auth-token');
-          setCanUseBiometricLogin(false);
-          setLocalError('Biometric login expired. Please sign in with your password to re-enable.');
-        } else {
-          setLocalError(`Login failed: ${error?.message || 'Unknown error'}`);
-        }
-
-        setBiometricLoading(false);
-        return;
-      }
-
-      console.log('Session valid, proceeding...');
-
-      // Success! Navigate to home
-      router.replace('/(tabs)/home');
-    } catch (err) {
-      console.error('Biometric sign in failed', err);
-      setLocalError('Failed to sign in. Please try again.');
-    } finally {
-      setBiometricLoading(false);
-    }
-  }, [router, clearError]);
 
   const handleSignIn = useCallback(async () => {
     const trimmedEmail = email.trim();
@@ -202,33 +84,79 @@ export default function SignInScreen() {
         await AsyncStorage.removeItem('@booth_brain_saved_email');
       }
 
-      const { data, error } = await signIn({ email: trimmedEmail, password });
+      const { error } = await signIn({ email: trimmedEmail, password });
 
       if (error) throw error;
 
-      // Manually save session for Expo Go biometric support
-      // We do this here AND in the provider to be doubly sure
-      if (data?.session) {
-        console.log('Saving session manually to AsyncStorage (Sign In)...');
-        try {
-          await AsyncStorage.setItem('sb-auth-token', JSON.stringify(data.session));
-          console.log('Session saved successfully!');
+      // Check if user needs 2FA
+      const assurance = await getAssuranceLevel();
 
-          // Verify immediately
-          const verify = await AsyncStorage.getItem('sb-auth-token');
-          console.log('Immediate verification:', verify ? 'EXISTS' : 'MISSING');
-        } catch (saveError) {
-          console.error('FAILED to save session:', saveError);
+      if (assurance.nextLevel === 'aal2') {
+        // User has 2FA enabled and needs to verify
+        const factorsResult = await getTwoFactorFactors();
+
+        if (factorsResult.success && factorsResult.factors && factorsResult.factors.length > 0) {
+          const verifiedFactor = factorsResult.factors.find(f => f.status === 'verified');
+
+          if (verifiedFactor) {
+            // Create a challenge for this factor
+            const challengeResult = await challengeTwoFactor(verifiedFactor.id);
+
+            if (challengeResult.success && challengeResult.challengeId) {
+              setFactorId(verifiedFactor.id);
+              setChallengeId(challengeResult.challengeId);
+              setShow2FAModal(true);
+              return; // Don't navigate yet, wait for 2FA verification
+            }
+          }
         }
-      } else {
-        console.warn('No session data to save manually');
       }
 
+      // No 2FA required or 2FA setup failed, proceed to home
       router.replace('/(tabs)/home');
     } catch (err) {
       console.error('Sign in failed', err);
     }
   }, [email, password, rememberMe, signIn, router, clearError]);
+
+  const handleVerify2FA = useCallback(async () => {
+    if (!factorId || !challengeId || !twoFactorCode.trim()) {
+      setLocalError('Please enter your 6-digit code');
+      return;
+    }
+
+    setVerifying2FA(true);
+    setLocalError(null);
+    clearError();
+
+    try {
+      const result = await verifyTwoFactorCode(factorId, challengeId, twoFactorCode.trim());
+
+      if (!result.success) {
+        setLocalError(result.error || 'Invalid code. Please try again.');
+        setVerifying2FA(false);
+        return;
+      }
+
+      // 2FA verified successfully, proceed to home
+      setShow2FAModal(false);
+      setTwoFactorCode('');
+      router.replace('/(tabs)/home');
+    } catch (err) {
+      console.error('2FA verification failed', err);
+      setLocalError('Verification failed. Please try again.');
+    } finally {
+      setVerifying2FA(false);
+    }
+  }, [factorId, challengeId, twoFactorCode, router, clearError]);
+
+  const handleCancel2FA = useCallback(() => {
+    setShow2FAModal(false);
+    setTwoFactorCode('');
+    setFactorId(null);
+    setChallengeId(null);
+    setLocalError(null);
+  }, []);
 
   return (
     <LinearGradient
@@ -251,48 +179,6 @@ export default function SignInScreen() {
               />
             </View>
             <Text style={[styles.title, { color: theme.colors.textPrimary }]}>Welcome back</Text>
-
-            {canUseBiometricLogin && (
-              <>
-                <Pressable
-                  style={[
-                    styles.biometricButton,
-                    { backgroundColor: theme.colors.primary, opacity: biometricLoading ? 0.8 : 1 },
-                  ]}
-                  onPress={handleBiometricSignIn}
-                  disabled={biometricLoading || loading}
-                >
-                  {biometricLoading ? (
-                    <ActivityIndicator color={theme.colors.surface} />
-                  ) : (
-                    <>
-                      <Ionicons
-                        name={
-                          biometricType === 'facial'
-                            ? 'scan'
-                            : biometricType === 'fingerprint'
-                              ? 'finger-print'
-                              : 'shield-checkmark'
-                        }
-                        size={24}
-                        color={theme.colors.surface}
-                      />
-                      <Text style={[styles.biometricButtonText, { color: theme.colors.surface }]}>
-                        Sign in with Biometrics
-                      </Text>
-                    </>
-                  )}
-                </Pressable>
-
-                <View style={styles.divider}>
-                  <View style={[styles.dividerLine, { backgroundColor: theme.colors.border }]} />
-                  <Text style={[styles.dividerText, { color: theme.colors.textMuted }]}>
-                    Or continue with password
-                  </Text>
-                  <View style={[styles.dividerLine, { backgroundColor: theme.colors.border }]} />
-                </View>
-              </>
-            )}
 
             <View style={styles.formGroup}>
               <Text style={[styles.label, { color: theme.colors.textSecondary }]}>Email</Text>
@@ -383,6 +269,95 @@ export default function SignInScreen() {
           </View>
         </View>
       </KeyboardAvoidingView>
+
+      {/* 2FA Verification Modal */}
+      <Modal
+        visible={show2FAModal}
+        animationType="slide"
+        presentationStyle="pageSheet"
+        onRequestClose={handleCancel2FA}
+      >
+        <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+          <KeyboardAvoidingView
+            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+            style={[styles.twoFactorModal, { backgroundColor: theme.colors.background }]}
+          >
+            <View style={styles.twoFactorHeader}>
+              <Text style={[styles.twoFactorTitle, { color: theme.colors.textPrimary }]}>
+                Two-Factor Authentication
+              </Text>
+              <Pressable onPress={handleCancel2FA}>
+                <Ionicons name="close" size={28} color={theme.colors.textPrimary} />
+              </Pressable>
+            </View>
+
+            <View style={styles.twoFactorContent}>
+              <View style={[styles.twoFactorIconContainer, { backgroundColor: theme.colors.primary }]}>
+                <Ionicons name="shield-checkmark" size={48} color={theme.colors.surface} />
+              </View>
+
+              <Text style={[styles.twoFactorDescription, { color: theme.colors.textSecondary }]}>
+                Enter the 6-digit code from your authenticator app to complete sign in.
+              </Text>
+
+              <TextInput
+                value={twoFactorCode}
+                onChangeText={setTwoFactorCode}
+                placeholder="000000"
+                placeholderTextColor={theme.colors.textMuted}
+                keyboardType="number-pad"
+                maxLength={6}
+                autoFocus
+                returnKeyType="done"
+                onSubmitEditing={handleVerify2FA}
+                blurOnSubmit
+                style={[
+                  styles.twoFactorInput,
+                  {
+                    borderColor: theme.colors.border,
+                    color: theme.colors.textPrimary,
+                    backgroundColor: theme.colors.surface,
+                  },
+                ]}
+              />
+
+              {displayError && (
+                <View style={[styles.errorBox, { backgroundColor: theme.colors.error }]}>
+                  <Text style={[styles.errorText, { color: theme.colors.surface }]}>
+                    {displayError}
+                  </Text>
+                </View>
+              )}
+
+              <Pressable
+                style={[
+                  styles.twoFactorButton,
+                  {
+                    backgroundColor: theme.colors.primary,
+                    opacity: verifying2FA || twoFactorCode.length !== 6 ? 0.5 : 1,
+                  },
+                ]}
+                onPress={handleVerify2FA}
+                disabled={verifying2FA || twoFactorCode.length !== 6}
+              >
+                {verifying2FA ? (
+                  <ActivityIndicator color={theme.colors.surface} />
+                ) : (
+                  <Text style={[styles.twoFactorButtonText, { color: theme.colors.surface }]}>
+                    Verify
+                  </Text>
+                )}
+              </Pressable>
+
+              <Pressable onPress={handleCancel2FA} style={styles.cancelButton}>
+                <Text style={[styles.cancelButtonText, { color: theme.colors.textSecondary }]}>
+                  Cancel
+                </Text>
+              </Pressable>
+            </View>
+          </KeyboardAvoidingView>
+        </TouchableWithoutFeedback>
+      </Modal>
     </LinearGradient>
   );
 }
@@ -428,42 +403,6 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     textAlign: 'center',
     marginBottom: 8,
-  },
-  biometricButton: {
-    marginTop: 8,
-    paddingVertical: 18,
-    borderRadius: 12,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 12,
-    shadowColor: '#0575E6',
-    shadowOffset: {
-      width: 0,
-      height: 4,
-    },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 6,
-  },
-  biometricButtonText: {
-    fontSize: 17,
-    fontWeight: '700',
-    letterSpacing: 0.5,
-  },
-  divider: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    marginVertical: 8,
-  },
-  dividerLine: {
-    flex: 1,
-    height: 1,
-  },
-  dividerText: {
-    fontSize: 13,
-    fontWeight: '500',
   },
   subtitle: {
     fontSize: 16,
@@ -547,6 +486,72 @@ const styles = StyleSheet.create({
   },
   footerLink: {
     fontSize: 14,
+    fontWeight: '600',
+  },
+  twoFactorModal: {
+    flex: 1,
+    padding: 20,
+  },
+  twoFactorHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingTop: 20,
+    paddingBottom: 20,
+  },
+  twoFactorTitle: {
+    fontSize: 24,
+    fontWeight: '700',
+  },
+  twoFactorContent: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 24,
+    paddingHorizontal: 20,
+  },
+  twoFactorIconContainer: {
+    width: 96,
+    height: 96,
+    borderRadius: 48,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  twoFactorDescription: {
+    fontSize: 16,
+    textAlign: 'center',
+    lineHeight: 24,
+  },
+  twoFactorInput: {
+    width: '100%',
+    maxWidth: 300,
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingVertical: 20,
+    paddingHorizontal: 16,
+    fontSize: 32,
+    fontWeight: '700',
+    textAlign: 'center',
+    letterSpacing: 12,
+  },
+  twoFactorButton: {
+    width: '100%',
+    maxWidth: 300,
+    paddingVertical: 18,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 8,
+  },
+  twoFactorButtonText: {
+    fontSize: 17,
+    fontWeight: '700',
+  },
+  cancelButton: {
+    paddingVertical: 12,
+  },
+  cancelButtonText: {
+    fontSize: 16,
     fontWeight: '600',
   },
 });

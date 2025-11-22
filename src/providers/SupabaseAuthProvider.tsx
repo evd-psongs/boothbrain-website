@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { Session } from '@supabase/supabase-js';
-import { Platform, AppState } from 'react-native';
+import { Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import { supabase } from '@/lib/supabase';
@@ -9,7 +9,6 @@ import { getErrorMessage } from '@/types/database';
 import { withTimeout, withRetry, getTimeout } from '@/utils/asyncHelpers';
 import { buildAuthUser } from '@/lib/auth/authUserBuilder';
 import { useAuthOperations } from '@/hooks/useAuthOperations';
-import { authenticateWithBiometrics, shouldUseBiometrics } from '@/utils/biometrics';
 
 type AuthContextValue = {
   user: AuthUser | null;
@@ -72,18 +71,6 @@ export function SupabaseAuthProvider({ children }: { children: React.ReactNode }
 
             if (cachedSession?.access_token && cachedSession?.user) {
               console.log('📱 Found cached session in AsyncStorage');
-
-              // Check if biometrics are enabled
-              // If enabled, we DO NOT auto-login. We let the user go to the login screen
-              // so they can click "Sign in with Biometrics" and authenticate.
-              const useBiometrics = await shouldUseBiometrics();
-
-              if (useBiometrics) {
-                console.log('🔒 Biometrics enabled, skipping auto-login to force authentication');
-                setLoading(false);
-                initializingRef.current = false;
-                return;
-              }
 
               // IMPORTANT: Initialize Supabase client with the session!
               // Just setting React state isn't enough for the SDK to know we're logged in.
@@ -227,62 +214,6 @@ export function SupabaseAuthProvider({ children }: { children: React.ReactNode }
       subscription.unsubscribe();
     };
   }, []);
-
-  // Biometric authentication on app resume
-  useEffect(() => {
-    const appStateSubscription = AppState.addEventListener('change', async (nextAppState) => {
-      // When app comes to foreground and user is logged in
-      if (nextAppState === 'active' && session && user) {
-        const useBiometrics = await shouldUseBiometrics();
-
-        if (useBiometrics) {
-          // Temporarily hide sensitive content
-          const tempSession = session;
-          const tempUser = user;
-          setSession(null);
-          setUser(null);
-
-          const result = await authenticateWithBiometrics();
-
-          if (result.success) {
-            // Restore session
-            setSession(tempSession);
-            setUser(tempUser);
-
-            // Attempt silent token refresh to keep session alive (with timeout)
-            try {
-              const refreshResult = await withTimeout(
-                supabase.auth.refreshSession(),
-                getTimeout('session', Platform.OS, isDevelopment),
-                'Token refresh timed out after biometric auth'
-              );
-
-              if (refreshResult.data?.session) {
-                setSession(refreshResult.data.session);
-                const authUser = await buildAuthUser(refreshResult.data.session.user);
-                setUser(authUser);
-              }
-            } catch (err) {
-              console.warn('Background refresh failed after biometric auth:', getErrorMessage(err));
-              // Keep the cached session even if refresh fails
-              setSession(tempSession);
-              setUser(tempUser);
-            }
-          } else {
-            // Biometric auth failed - sign out for security
-            console.warn('Biometric authentication failed:', result.error);
-            await supabase.auth.signOut();
-            setSession(null);
-            setUser(null);
-          }
-        }
-      }
-    });
-
-    return () => {
-      appStateSubscription.remove();
-    };
-  }, [session, user]);
 
   const clearError = useCallback(() => {
     setError(null);
