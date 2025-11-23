@@ -12,3 +12,4 @@ export type { InputFieldProps } from './InputField';
 export { SectionHeading } from './SectionHeading';
 export { FeedbackBanner } from './FeedbackBanner';
 export type { FeedbackState } from './FeedbackBanner';
+export { KeyboardDismissibleView } from './KeyboardDismissibleView';

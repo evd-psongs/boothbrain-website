@@ -1,8 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
-  KeyboardAvoidingView,
-  Platform,
   Pressable,
   StyleSheet,
   Text,
@@ -14,6 +12,7 @@ import { Feather } from '@expo/vector-icons';
 
 import { useSupabaseAuth } from '@/providers/SupabaseAuthProvider';
 import { useTheme } from '@/providers/ThemeProvider';
+import { KeyboardDismissibleView } from '@/components/common';
 import { EMAIL_IN_USE_MESSAGE, mapSupabaseSignUpError } from '@/utils/authErrors';
 
 export default function SignUpScreen() {
@@ -87,9 +86,9 @@ export default function SignUpScreen() {
   }, [email, password, confirmPassword, fullName, acceptedTerms, signUp, router, clearError]);
 
   return (
-    <KeyboardAvoidingView
+    <KeyboardDismissibleView
+      useScrollView={false}
       style={[styles.container, { backgroundColor: theme.colors.background }]}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
       <View style={styles.inner}>
         <View style={[styles.card, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
@@ -254,7 +253,7 @@ export default function SignUpScreen() {
           </View>
         </View>
       </View>
-    </KeyboardAvoidingView>
+    </KeyboardDismissibleView>
   );
 }
 

@@ -1,11 +1,8 @@
 import { useMemo } from 'react';
 import {
   ActivityIndicator,
-  KeyboardAvoidingView,
   Modal,
-  Platform,
   Pressable,
-  ScrollView,
   StyleSheet,
   Switch,
   Text,
@@ -17,6 +14,7 @@ import { Feather } from '@expo/vector-icons';
 import type { Theme } from '@/providers/ThemeProvider';
 import type { CartLine } from '@/state/cartStore';
 import { formatCurrencyFromCents } from '@/utils/currency';
+import { KeyboardDismissibleView } from '@/components/common';
 
 export type DiscountSelection = {
   id: string;
@@ -127,19 +125,15 @@ export function CheckoutModal({
 
   return (
     <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
-      <KeyboardAvoidingView
-        style={{ flex: 1 }}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      >
-        <SafeAreaView style={[styles.checkoutContainer, { backgroundColor: themeColors.background }]}>
-          <View style={styles.checkoutHeader}>
-            <Text style={[styles.checkoutTitle, { color: themeColors.textPrimary }]}>Cart</Text>
-            <Pressable onPress={onClose} hitSlop={12}>
-              <Feather name="x" size={20} color={themeColors.textSecondary} />
-            </Pressable>
-          </View>
+      <SafeAreaView style={[styles.checkoutContainer, { backgroundColor: themeColors.background }]}>
+        <View style={styles.checkoutHeader}>
+          <Text style={[styles.checkoutTitle, { color: themeColors.textPrimary }]}>Cart</Text>
+          <Pressable onPress={onClose} hitSlop={12}>
+            <Feather name="x" size={20} color={themeColors.textSecondary} />
+          </Pressable>
+        </View>
 
-          <ScrollView contentContainerStyle={styles.checkoutContent}>
+        <KeyboardDismissibleView contentContainerStyle={styles.checkoutContent}>
             {lines.map((line) => (
               <View
                 key={line.item.id}
@@ -304,9 +298,8 @@ export function CheckoutModal({
                 </Text>
               </View>
             )}
-          </ScrollView>
-        </SafeAreaView>
-      </KeyboardAvoidingView>
+        </KeyboardDismissibleView>
+      </SafeAreaView>
     </Modal>
   );
 }

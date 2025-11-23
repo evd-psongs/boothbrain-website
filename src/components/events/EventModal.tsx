@@ -1,10 +1,8 @@
 import { useState, useCallback } from 'react';
 import {
-  KeyboardAvoidingView,
   Modal,
   Platform,
   Pressable,
-  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -14,6 +12,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
 import type { Theme } from '@/providers/ThemeProvider';
 import { formatDateLabel } from '@/utils/dates';
+import { KeyboardDismissibleView } from '@/components/common';
 
 const MONTH_LABELS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
@@ -120,32 +119,31 @@ export function EventModal({
       presentationStyle="pageSheet"
       onRequestClose={handleCloseModal}
     >
-      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.modalKeyboardAvoid}>
-        <View style={styles.modalOverlay}>
-          <View style={[styles.fullModalCard, { backgroundColor: theme.colors.background }]}>
-            <SafeAreaView edges={['top']} style={[styles.fullModalSafeArea, { backgroundColor: theme.colors.background }]}>
-              <View style={[styles.fullModalHeader, { borderBottomColor: theme.colors.border }]}>
-                <Text style={[styles.modalTitle, { color: theme.colors.textPrimary }]}>
-                  {isEditing ? 'Edit event' : 'Add event'}
-                </Text>
-                <Pressable
-                  onPress={onClose}
-                  hitSlop={12}
-                  style={({ pressed }) => ({
-                    padding: 8,
-                    borderRadius: 20,
-                    backgroundColor: pressed ? 'rgba(0,0,0,0.05)' : 'transparent',
-                  })}
-                >
-                  <Feather name="x" size={24} color={theme.colors.textMuted} />
-                </Pressable>
-              </View>
-            </SafeAreaView>
-            <ScrollView
-              style={styles.fullModalContent}
-              contentContainerStyle={styles.fullModalContentContainer}
-              keyboardShouldPersistTaps="handled"
-            >
+      <View style={styles.modalOverlay}>
+        <View style={[styles.fullModalCard, { backgroundColor: theme.colors.background }]}>
+          <SafeAreaView edges={['top']} style={[styles.fullModalSafeArea, { backgroundColor: theme.colors.background }]}>
+            <View style={[styles.fullModalHeader, { borderBottomColor: theme.colors.border }]}>
+              <Text style={[styles.modalTitle, { color: theme.colors.textPrimary }]}>
+                {isEditing ? 'Edit event' : 'Add event'}
+              </Text>
+              <Pressable
+                onPress={onClose}
+                hitSlop={12}
+                style={({ pressed }) => ({
+                  padding: 8,
+                  borderRadius: 20,
+                  backgroundColor: pressed ? 'rgba(0,0,0,0.05)' : 'transparent',
+                })}
+              >
+                <Feather name="x" size={24} color={theme.colors.textMuted} />
+              </Pressable>
+            </View>
+          </SafeAreaView>
+          <KeyboardDismissibleView
+            style={styles.fullModalContent}
+            contentContainerStyle={styles.fullModalContentContainer}
+            keyboardVerticalOffset={Platform.OS === 'ios' ? 100 : 0}
+          >
               <View style={styles.modalField}>
                 <Text style={{ color: theme.colors.textSecondary, marginBottom: 4 }}>Name</Text>
                 <TextInput
@@ -236,9 +234,9 @@ export function EventModal({
                   {isEditing ? 'Save changes' : 'Create event'}
                 </Text>
               </Pressable>
-            </ScrollView>
+          </KeyboardDismissibleView>
 
-            {datePickerVisible ? (
+          {datePickerVisible ? (
               <View style={[styles.datePickerOverlay, { backgroundColor: theme.colors.background }]}>
                 <View style={[styles.datePickerCard, { borderColor: theme.colors.border }]}>
                   <View style={styles.yearSelector}>
@@ -325,9 +323,8 @@ export function EventModal({
                 </View>
               </View>
             ) : null}
-          </View>
         </View>
-      </KeyboardAvoidingView>
+      </View>
     </Modal>
   );
 }

@@ -1,8 +1,6 @@
 import {
   ActivityIndicator,
-  KeyboardAvoidingView,
   Modal,
-  Platform,
   Pressable,
   StyleSheet,
   Text,
@@ -11,6 +9,7 @@ import {
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { useTheme } from '@/providers/ThemeProvider';
+import { KeyboardDismissibleView } from '@/components/common';
 
 type ImportModalProps = {
   visible: boolean;
@@ -39,10 +38,7 @@ export function ImportModal({
 
   return (
     <Modal visible={visible} transparent animationType="slide">
-      <KeyboardAvoidingView
-        style={styles.modalOverlay}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      >
+      <KeyboardDismissibleView useScrollView={false} style={styles.modalOverlay}>
         <View style={[styles.modalCard, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
           <View style={styles.modalHeader}>
             <Text style={[styles.modalTitle, { color: theme.colors.textPrimary }]}>Import inventory</Text>
@@ -103,7 +99,7 @@ export function ImportModal({
             </Pressable>
           </View>
         </View>
-      </KeyboardAvoidingView>
+      </KeyboardDismissibleView>
     </Modal>
   );
 }

@@ -20,6 +20,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     googleServicesFile: './GoogleService-Info.plist',
     infoPlist: {
       ITSAppUsesNonExemptEncryption: false,
+      UIStatusBarStyle: 'UIStatusBarStyleDarkContent',
     },
   },
   android: {

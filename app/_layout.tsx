@@ -1,4 +1,5 @@
 import { useEffect } from 'react';
+import { StatusBar } from 'react-native';
 import { Stack } from 'expo-router';
 
 import { ThemeProvider } from '@/providers/ThemeProvider';
@@ -14,6 +15,7 @@ function AppWithCrashlytics() {
 
   return (
     <SessionProvider>
+      <StatusBar barStyle="dark-content" />
       <Stack screenOptions={{ headerShown: false }} />
     </SessionProvider>
   );

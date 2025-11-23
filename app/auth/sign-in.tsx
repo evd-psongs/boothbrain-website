@@ -3,16 +3,12 @@ import {
   View,
   Text,
   StyleSheet,
-  KeyboardAvoidingView,
-  Platform,
   TextInput,
   ActivityIndicator,
   Pressable,
   Image,
   Switch,
   Modal,
-  TouchableWithoutFeedback,
-  Keyboard,
 } from 'react-native';
 import { Link, useRouter } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -21,6 +17,7 @@ import { Ionicons } from '@expo/vector-icons';
 
 import { useSupabaseAuth } from '@/providers/SupabaseAuthProvider';
 import { useTheme } from '@/providers/ThemeProvider';
+import { KeyboardDismissibleView } from '@/components/common';
 import {
   getAssuranceLevel,
   getTwoFactorFactors,
@@ -165,10 +162,7 @@ export default function SignInScreen() {
       end={{ x: 1, y: 1 }}
       style={styles.gradient}
     >
-      <KeyboardAvoidingView
-        style={styles.container}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      >
+      <KeyboardDismissibleView useScrollView={false} style={styles.container}>
         <View style={styles.inner}>
           <View style={[styles.card, { backgroundColor: theme.colors.surface }]}>
             <View style={styles.logoContainer}>
@@ -268,7 +262,7 @@ export default function SignInScreen() {
             </View>
           </View>
         </View>
-      </KeyboardAvoidingView>
+      </KeyboardDismissibleView>
 
       {/* 2FA Verification Modal */}
       <Modal
@@ -277,11 +271,11 @@ export default function SignInScreen() {
         presentationStyle="pageSheet"
         onRequestClose={handleCancel2FA}
       >
-        <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
-          <KeyboardAvoidingView
-            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-            style={[styles.twoFactorModal, { backgroundColor: theme.colors.background }]}
-          >
+        <KeyboardDismissibleView
+          useScrollView={false}
+          style={[styles.twoFactorModal, { backgroundColor: theme.colors.background }]}
+        >
+          <View style={styles.twoFactorModal}>
             <View style={styles.twoFactorHeader}>
               <Text style={[styles.twoFactorTitle, { color: theme.colors.textPrimary }]}>
                 Two-Factor Authentication
@@ -355,8 +349,8 @@ export default function SignInScreen() {
                 </Text>
               </Pressable>
             </View>
-          </KeyboardAvoidingView>
-        </TouchableWithoutFeedback>
+          </View>
+        </KeyboardDismissibleView>
       </Modal>
     </LinearGradient>
   );

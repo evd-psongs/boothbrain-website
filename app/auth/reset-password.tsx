@@ -5,14 +5,13 @@ import {
   TextInput,
   StyleSheet,
   ActivityIndicator,
-  KeyboardAvoidingView,
-  Platform,
   Pressable,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 
 import { useSupabaseAuth } from '@/providers/SupabaseAuthProvider';
 import { useTheme } from '@/providers/ThemeProvider';
+import { KeyboardDismissibleView } from '@/components/common';
 
 export default function ResetPasswordScreen() {
   const { theme } = useTheme();
@@ -45,9 +44,9 @@ export default function ResetPasswordScreen() {
   };
 
   return (
-    <KeyboardAvoidingView
+    <KeyboardDismissibleView
+      useScrollView={false}
       style={[styles.container, { backgroundColor: theme.colors.background }]}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
       <View style={[styles.card, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}
       >
@@ -98,7 +97,7 @@ export default function ResetPasswordScreen() {
           )}
         </Pressable>
       </View>
-    </KeyboardAvoidingView>
+    </KeyboardDismissibleView>
   );
 }
 

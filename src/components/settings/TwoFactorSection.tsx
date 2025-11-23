@@ -7,13 +7,12 @@ import {
   Pressable,
   Modal,
   TextInput,
-  ScrollView,
   Alert,
 } from 'react-native';
 import QRCode from 'react-native-qrcode-svg';
 import { Ionicons } from '@expo/vector-icons';
 
-import { PrimaryButton, SecondaryButton, SectionHeading, type FeedbackState } from '@/components/common';
+import { PrimaryButton, SecondaryButton, SectionHeading, KeyboardDismissibleView, type FeedbackState } from '@/components/common';
 import type { Theme } from '@/providers/ThemeProvider';
 import {
   isTwoFactorEnabled,
@@ -315,7 +314,7 @@ export function TwoFactorSection({ theme, showFeedback }: TwoFactorSectionProps)
         onRequestClose={handleCancelEnrollment}
       >
         <View style={[styles.modalContainer, { backgroundColor: theme.colors.background }]}>
-          <ScrollView contentContainerStyle={styles.modalContent}>
+          <KeyboardDismissibleView contentContainerStyle={styles.modalContent}>
             <View style={styles.modalHeader}>
               <Text style={[styles.modalTitle, { color: theme.colors.textPrimary }]}>
                 Enable Two-Factor Authentication
@@ -416,7 +415,7 @@ export function TwoFactorSection({ theme, showFeedback }: TwoFactorSectionProps)
                 textColor={theme.colors.surface}
               />
             </View>
-          </ScrollView>
+          </KeyboardDismissibleView>
         </View>
       </Modal>
     </>

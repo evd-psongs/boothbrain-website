@@ -1,10 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
-  KeyboardAvoidingView,
   Platform,
   Pressable,
-  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -15,6 +13,7 @@ import { Link, Redirect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useTheme } from '@/providers/ThemeProvider';
 import { supabase } from '@/lib/supabase';
 import { useSupabaseAuth } from '@/providers/SupabaseAuthProvider';
+import { KeyboardDismissibleView } from '@/components/common';
 
 export default function VerifyEmailScreen() {
   const router = useRouter();
@@ -218,14 +217,13 @@ export default function VerifyEmailScreen() {
   const displayError = localError || error;
 
   return (
-    <KeyboardAvoidingView
+    <KeyboardDismissibleView
       style={[styles.container, { backgroundColor: theme.colors.background }]}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      contentContainerStyle={styles.scrollContent}
       keyboardVerticalOffset={Platform.OS === 'ios' ? 80 : 0}
     >
-      <ScrollView contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled">
-        <View style={[styles.card, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}
-        >
+      <View style={[styles.card, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}
+      >
           <Text style={[styles.title, { color: theme.colors.textPrimary }]}>Verify your email</Text>
           <Text style={[styles.body, { color: theme.colors.textSecondary }]}>Enter the 6-digit code we sent to</Text>
           <Text style={[styles.email, { color: theme.colors.textPrimary }]}>{targetEmail || 'your email address'}</Text>
@@ -270,8 +268,7 @@ export default function VerifyEmailScreen() {
             </Link>
           </View>
         </View>
-      </ScrollView>
-    </KeyboardAvoidingView>
+    </KeyboardDismissibleView>
   );
 }
 

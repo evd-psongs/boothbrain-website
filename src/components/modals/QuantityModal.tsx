@@ -1,7 +1,5 @@
 import {
-  KeyboardAvoidingView,
   Modal,
-  Platform,
   Pressable,
   StyleSheet,
   Text,
@@ -10,6 +8,7 @@ import {
 } from 'react-native';
 import type { Theme } from '@/providers/ThemeProvider';
 import type { InventoryItem } from '@/types/inventory';
+import { KeyboardDismissibleView } from '@/components/common';
 
 interface QuantityModalProps {
   visible: boolean;
@@ -32,10 +31,7 @@ export function QuantityModal({
 }: QuantityModalProps) {
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
-      <KeyboardAvoidingView
-        style={styles.modalOverlay}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      >
+      <KeyboardDismissibleView useScrollView={false} style={styles.modalOverlay}>
         <View style={[styles.quantityCard, { backgroundColor: themeColors.surface }]}>
           <Text style={[styles.modalTitle, { color: themeColors.textPrimary }]}>
             {item ? `Adjust ${item.name}` : 'Adjust quantity'}
@@ -76,7 +72,7 @@ export function QuantityModal({
             </Pressable>
           </View>
         </View>
-      </KeyboardAvoidingView>
+      </KeyboardDismissibleView>
     </Modal>
   );
 }

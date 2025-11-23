@@ -17,6 +17,28 @@ BoothBrain is an Expo React Native app for managing vendor booth inventory and s
 - Code editing and git operations can be done from either WSL or Windows
 - Metro Bundler must run from Windows to work with Expo Go app on your phone
 
+## Git Workflow & Branches
+**Branch Structure:**
+- `master` - Main/production branch (stable code)
+- `test-branch` - Development/testing branch (active development)
+
+**Current Status:**
+- Both branches currently in sync at commit `4521e0c` (2FA + database fixes)
+- Active development happens on `test-branch`
+- Changes merged to `master` when stable
+
+**How Dev Server Works with Branches:**
+- Metro Bundler runs **whatever code is currently on disk** (your active branch)
+- When you switch branches, Metro auto-detects file changes and reloads
+- To check current branch: `git branch` (shows * next to active branch)
+- To switch branches: `git checkout master` or `git checkout test-branch`
+
+**Important Notes:**
+- ✅ Switching branches while dev server runs = automatic reload with new code
+- ✅ Uncommitted changes stay in working directory when switching branches
+- ⚠️ If things look wrong after branch switch: `npm start -- --clear` (clears Metro cache)
+- 📝 Always check `git status` before committing to see which branch you're on
+
 ## Refactoring Achievement Summary (2025-11-06)
 🎉 **Major refactoring milestone completed!**
 - Started with 4 screens over 1,600 lines each + 2 providers over 350 lines
@@ -79,13 +101,24 @@ BoothBrain is an Expo React Native app for managing vendor booth inventory and s
   - ✅ **Works perfectly in production builds** (TestFlight/App Store)
   - For development testing: Test UI flows only, full testing requires TestFlight build
 
-- ✅ **Fixed Keyboard Dismissal on 2FA Modal** ⌨️
-  - Added `TouchableWithoutFeedback` wrapper for tap-to-dismiss
-  - Added `KeyboardAvoidingView` to shift content when keyboard appears
-  - Added `returnKeyType="done"` to show "Done" button on iOS keyboard
-  - Added `onSubmitEditing` to submit verification when "Done" pressed
-  - Added `blurOnSubmit` to dismiss keyboard after submission
-  - Users can now: tap outside input, press "Done", or swipe down to dismiss keyboard
+- ✅ **Unified Keyboard Handling Across Entire App** ⌨️
+  - Created `KeyboardDismissibleView` reusable wrapper component
+  - **Features:**
+    - Tap anywhere outside input to dismiss keyboard
+    - Automatic content adjustment when keyboard appears (iOS)
+    - Optional ScrollView with proper keyboard persistence
+    - Prevents keyboard from blocking text inputs
+    - Consistent behavior across all screens and modals
+  - **Implementation:**
+    - Created `src/components/common/KeyboardDismissibleView.tsx` (56 lines)
+    - Updated `TwoFactorSection.tsx` enrollment modal to use wrapper
+    - Updated `sign-in.tsx` 2FA verification modal to use wrapper
+    - Removed duplicate keyboard handling code
+  - **User Benefits:**
+    - Can always scroll to see inputs behind keyboard
+    - Multiple ways to dismiss: tap outside, swipe down, or press "Done"
+    - No more getting stuck with keyboard blocking UI
+    - Works consistently across entire app
 
 - ✅ **Fixed User Deletion Database Errors (PERMANENT FIX)** 🗄️
   - **Problem:** "Database error deleting user" when trying to delete users from Supabase Dashboard
@@ -111,6 +144,7 @@ BoothBrain is an Expo React Native app for managing vendor booth inventory and s
 - 📝 **Files Created:**
   - `src/utils/twoFactor.ts` (311 lines) - 2FA utility functions
   - `src/components/settings/TwoFactorSection.tsx` (424 lines) - 2FA management UI
+  - `src/components/common/KeyboardDismissibleView.tsx` (56 lines) - Unified keyboard wrapper
   - `supabase/migrations/fix_user_deletion_cascade_v3.sql` - CASCADE constraints migration
   - `supabase/migrations/fix_session_join_attempts_cascade.sql` - Session attempts fix
 
@@ -120,7 +154,9 @@ BoothBrain is an Expo React Native app for managing vendor booth inventory and s
   - `src/components/settings/SecuritySection.tsx` - Old biometric settings UI
 
 - 📝 **Files Modified:**
-  - `app/auth/sign-in.tsx` - Removed biometric code, added 2FA verification modal
+  - `app/auth/sign-in.tsx` - Removed biometric code, added 2FA verification modal with KeyboardDismissibleView
+  - `src/components/settings/TwoFactorSection.tsx` - Added KeyboardDismissibleView to enrollment modal
+  - `src/components/common/index.ts` - Exported KeyboardDismissibleView
   - `app/(tabs)/settings.tsx` - Replaced SecuritySection with TwoFactorSection
   - `src/providers/SupabaseAuthProvider.tsx` - Removed biometric app resume logic
   - `app.config.ts` - Removed biometric permissions and expo-local-authentication plugin
@@ -595,6 +631,7 @@ When modifying providers:
 - `InputField` - Form inputs with labels
 - `SectionHeading` - Section headers
 - `FeedbackBanner` - Animated success/error messages
+- `KeyboardDismissibleView` - Unified keyboard handling wrapper (tap to dismiss, auto-adjust, scrollable)
 
 #### Settings Components (`/src/components/settings/`)
 - `SessionManagementSection` - Session creation and management (322 lines, ✅ integrated)
@@ -686,6 +723,13 @@ export function ProfileSection() {
 - ❌ **DON'T:** Create "god components" that do everything
 - ✅ **DO:** Reuse existing components (PrimaryButton, InputField, etc.)
 - ❌ **DON'T:** Create new components for things that already exist
+
+### Keyboard Handling Rules
+- ✅ **DO:** Use `KeyboardDismissibleView` for all modals and screens with text inputs
+- ✅ **DO:** Set `useScrollView={true}` (default) for modals with scrollable content
+- ✅ **DO:** Set `useScrollView={false}` for fixed layouts (like centered 2FA input)
+- ❌ **DON'T:** Manually implement keyboard handling with TouchableWithoutFeedback + KeyboardAvoidingView
+- ❌ **DON'T:** Create custom keyboard solutions when KeyboardDismissibleView exists
 
 ### Breaking Changes - NEVER DO THIS:
 - ❌ Change database column names without comprehensive type updates

@@ -2,10 +2,8 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
-  KeyboardAvoidingView,
   Platform,
   Pressable,
-  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -19,6 +17,7 @@ import * as ImagePicker from 'expo-image-picker';
 
 import { useTheme } from '@/providers/ThemeProvider';
 import { useSupabaseAuth } from '@/providers/SupabaseAuthProvider';
+import { KeyboardDismissibleView } from '@/components/common';
 import { useSession } from '@/providers/SessionProvider';
 import { useInventory } from '@/hooks/useInventory';
 import { useEventStagedInventory } from '@/hooks/useEventStagedInventory';
@@ -672,16 +671,12 @@ export default function ItemFormScreen() {
 
   return (
     <SafeAreaView style={[styles.safeArea, { backgroundColor: theme.colors.background }]}>
-      <KeyboardAvoidingView
+      <KeyboardDismissibleView
         style={styles.flex}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        contentContainerStyle={[styles.scrollContent, { paddingBottom: 32 }]}
         keyboardVerticalOffset={Platform.OS === 'ios' ? 80 : 0}
       >
-        <ScrollView
-          contentContainerStyle={[styles.scrollContent, { paddingBottom: 32 }]}
-          keyboardShouldPersistTaps="handled"
-        >
-          <View style={styles.headerRow}>
+        <View style={styles.headerRow}>
             <Pressable onPress={() => router.back()} hitSlop={12} style={styles.iconButton}>
               <Feather name="arrow-left" size={20} color={theme.colors.textPrimary} />
             </Pressable>
@@ -876,8 +871,7 @@ export default function ItemFormScreen() {
               ) : null}
             </View>
           )}
-        </ScrollView>
-      </KeyboardAvoidingView>
+      </KeyboardDismissibleView>
     </SafeAreaView>
   );
 }
