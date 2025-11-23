@@ -802,6 +802,7 @@ Test these critical flows after ANY change:
 - ✅ ~~Session ending PostgREST error~~ (Fixed 2025-11-09 - schema mismatch resolved)
 - ✅ ~~Parsing errors in Stripe webhook functions~~ (Fixed 2025-11-14 - proper try-catch blocks verified)
 - ✅ ~~Database error deleting user~~ (Fixed 2025-11-22 - CASCADE constraints added to all tables)
+- ⚠️ **Square Payment Integration Limited** - Square links are one-time/single-item only, need better integration (open Square app directly or use API)
 - No major architectural issues remaining - codebase is clean and maintainable!
 
 ## Next Tasks
@@ -820,10 +821,15 @@ Test these critical flows after ANY change:
 13. ✅ ~~Refactor SessionProvider~~ (Completed - 398 → 133 lines)
 14. ✅ ~~Add proper TypeScript types for all API responses~~ (Completed - created database.ts)
 15. ✅ ~~Add missing loading states in API calls~~ (Completed - verified all hooks have loading states)
-16. Performance optimization (lazy loading, memoization)
-17. Add comprehensive error boundaries
-18. Implement proper offline support
-19. Add unit tests for critical business logic
+16. **Fix Square payment integration** - Current Square links are one-time/single-item only. Options:
+    - Deep link to open Square app directly
+    - Use Square API to create dynamic payment links with cart total
+    - Integrate Square SDK for in-app checkout
+    - Research Square Terminal API or Reader SDK
+17. Performance optimization (lazy loading, memoization)
+18. Add comprehensive error boundaries
+19. Implement proper offline support
+20. Add unit tests for critical business logic
 
 ## Important Reminders & Don'ts
 - ✅ **ALL 6 major files/providers refactored:**
