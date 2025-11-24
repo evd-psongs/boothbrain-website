@@ -23,7 +23,8 @@ BoothBrain is an Expo React Native app for managing vendor booth inventory and s
 - `test-branch` - Development/testing branch (active development)
 
 **Current Status:**
-- Both branches currently in sync at commit `4521e0c` (2FA + database fixes)
+- `test-branch` at commit `149b26c` (checkout UX improvements)
+- `master` at commit `4521e0c` (2FA + database fixes)
 - Active development happens on `test-branch`
 - Changes merged to `master` when stable
 
@@ -47,7 +48,38 @@ BoothBrain is an Expo React Native app for managing vendor booth inventory and s
 - All major files now under 1,300 lines (most under 200 lines)
 - Created clear separation of concerns with dedicated service layers
 
-## Current Session (2025-11-22 - Replaced Biometrics with 2FA + Database Fixes)
+## Current Session (2025-11-24 - Checkout UX Improvements)
+- ✅ **Fixed Currency Display to Show Cents** 💰
+  - **Problem:** Tax calculations appeared incorrect (showed $12 instead of $12.41)
+  - **Root Cause:** Currency formatter was hiding decimal places (minimumFractionDigits: 0)
+  - **Solution:** Updated `src/utils/currency.ts` to always show 2 decimal places
+  - Changed `minimumFractionDigits` from `0` → `2`
+  - Changed `maximumFractionDigits` from `0` → `2`
+  - **Result:** All prices now display with accurate cents throughout app
+    - Tax: $12.41 (was $12)
+    - Subtotal: $146.00 (was $146)
+    - Total: $158.41 (was $158)
+
+- ✅ **Fixed Checkout Modal Scrolling** 📜
+  - **Problem:** Payment buttons cut off at bottom, couldn't scroll to see all options
+  - **Root Cause:** `KeyboardDismissibleView` didn't have flex: 1 to take up available space
+  - **Solution:** Added `style={{ flex: 1 }}` prop to `KeyboardDismissibleView` in CheckoutModal
+  - **Result:** Modal now scrolls properly to show all payment buttons
+
+- ✅ **Code Quality Verified**
+  - TypeScript compilation: ✅ Zero errors (`npm run typecheck`)
+  - ESLint: ✅ Zero errors (`npm run lint`)
+
+- 📝 **Files Modified:**
+  - `src/utils/currency.ts` - Updated decimal place formatting
+  - `src/components/modals/CheckoutModal.tsx` - Added flex: 1 for scrolling
+
+- 🎯 **User Impact:**
+  - Accurate price display with cents for all transactions
+  - Full access to all payment methods in checkout
+  - Better checkout experience on all screen sizes
+
+## Previous Session (2025-11-22 - Replaced Biometrics with 2FA + Database Fixes)
 - ✅ **Removed All Biometric Authentication** 🗑️
   - Deleted `src/utils/biometrics.ts` and `src/utils/biometricPreferences.ts`
   - Deleted `src/components/settings/SecuritySection.tsx`
