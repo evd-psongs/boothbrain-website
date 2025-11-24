@@ -133,7 +133,7 @@ export function CheckoutModal({
           </Pressable>
         </View>
 
-        <KeyboardDismissibleView contentContainerStyle={styles.checkoutContent}>
+        <KeyboardDismissibleView style={{ flex: 1 }} contentContainerStyle={styles.checkoutContent}>
             {lines.map((line) => (
               <View
                 key={line.item.id}
