@@ -21,6 +21,11 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     infoPlist: {
       ITSAppUsesNonExemptEncryption: false,
       UIStatusBarStyle: 'UIStatusBarStyleDarkContent',
+      LSApplicationQueriesSchemes: [
+        'square-commerce-v1',  // Square Point of Sale app
+        'cashme',              // Cash App
+        'venmo',               // Venmo app
+      ],
     },
   },
   android: {

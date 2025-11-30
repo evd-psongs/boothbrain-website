@@ -48,7 +48,21 @@ BoothBrain is an Expo React Native app for managing vendor booth inventory and s
 - All major files now under 1,300 lines (most under 200 lines)
 - Created clear separation of concerns with dedicated service layers
 
-## Current Session (2025-11-24 - Checkout UX Improvements)
+## Current Session (2025-11-30 - Payment App Deep Link Integration)
+- ✅ **Integrated Payment App Deep Links** 📱
+  - **Problem:** Payment buttons weren't opening native apps; needed iOS URL scheme whitelisting.
+  - **Solution:** Added deep link support for Square, Cash App, and Venmo.
+  - **Implementation:**
+    - Added URL schemes to iOS `LSApplicationQueriesSchemes` in `app.config.ts`:
+      - `square-commerce-v1` - Square Point of Sale app
+      - `cashme` - Cash App
+      - `venmo` - Venmo app
+    - Updated `sale.tsx` with comprehensive debug logging for payment flows
+    - Modified URL opening logic to attempt opening even if `canOpenURL` returns false (Expo Go limitation)
+  - **Result:** Tapping payment buttons now opens the respective native apps if installed
+  - **Note:** Full functionality requires production/development build (not Expo Go)
+
+## Previous Session (2025-11-24 - Checkout UX Improvements)
 - ✅ **Fixed Currency Display to Show Cents** 💰
   - **Problem:** Tax calculations appeared incorrect (showed $12 instead of $12.41)
   - **Root Cause:** Currency formatter was hiding decimal places (minimumFractionDigits: 0)
@@ -834,7 +848,7 @@ Test these critical flows after ANY change:
 - ✅ ~~Session ending PostgREST error~~ (Fixed 2025-11-09 - schema mismatch resolved)
 - ✅ ~~Parsing errors in Stripe webhook functions~~ (Fixed 2025-11-14 - proper try-catch blocks verified)
 - ✅ ~~Database error deleting user~~ (Fixed 2025-11-22 - CASCADE constraints added to all tables)
-- ⚠️ **Square Payment Integration Limited** - Square links are one-time/single-item only, need better integration (open Square app directly or use API)
+- ✅ **Square Payment Integration Updated** - Now opens Square POS app directly (`square-commerce-v1://`) instead of using web links. Removed manual link entry from Settings.
 - No major architectural issues remaining - codebase is clean and maintainable!
 
 ## Next Tasks

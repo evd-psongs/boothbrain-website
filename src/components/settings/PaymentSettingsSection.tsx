@@ -18,7 +18,7 @@ import {
 import { deleteUserSetting, fetchUserSettings, setUserSetting } from '@/lib/settings';
 import type { Theme } from '@/providers/ThemeProvider';
 
-type PaymentField = 'squareLink' | 'venmoUsername' | 'cashAppTag' | 'paypalQrUri';
+type PaymentField = 'venmoUsername' | 'cashAppTag' | 'paypalQrUri';
 
 type PaymentValues = Record<PaymentField, string>;
 
@@ -29,15 +29,9 @@ type PaymentFieldConfig = {
   keyboardType?: KeyboardTypeOptions;
 };
 
-const PAYMENT_FIELDS: PaymentField[] = ['squareLink', 'venmoUsername', 'cashAppTag', 'paypalQrUri'];
+const PAYMENT_FIELDS: PaymentField[] = ['venmoUsername', 'cashAppTag', 'paypalQrUri'];
 
 const PAYMENT_CONFIG: PaymentFieldConfig[] = [
-  {
-    field: 'squareLink',
-    label: 'Square checkout link',
-    placeholder: 'https://square.link/...',
-    keyboardType: 'url',
-  },
   {
     field: 'venmoUsername',
     label: 'Venmo username',
@@ -51,7 +45,6 @@ const PAYMENT_CONFIG: PaymentFieldConfig[] = [
 ];
 
 const DEFAULT_PAYMENT_VALUES: PaymentValues = {
-  squareLink: '',
   venmoUsername: '',
   cashAppTag: '',
   paypalQrUri: '',

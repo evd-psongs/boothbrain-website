@@ -9,7 +9,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
 import type { Theme } from '@/providers/ThemeProvider';
 import type { CartLine } from '@/state/cartStore';
@@ -38,12 +38,12 @@ export const PAYMENT_BUTTONS: Array<{
   icon: keyof typeof Feather.glyphMap;
   tint: string;
 }> = [
-  { method: 'square', label: 'Square', icon: 'credit-card', tint: '#1F2933' },
-  { method: 'venmo', label: 'Venmo', icon: 'send', tint: '#3D95CE' },
-  { method: 'cashapp', label: 'Cash App', icon: 'smartphone', tint: '#00C244' },
-  { method: 'paypal', label: 'PayPal', icon: 'globe', tint: '#003087' },
-  { method: 'cash', label: 'Cash', icon: 'dollar-sign', tint: '#2DBA7F' },
-];
+    { method: 'square', label: 'Square', icon: 'credit-card', tint: '#1F2933' },
+    { method: 'venmo', label: 'Venmo', icon: 'send', tint: '#3D95CE' },
+    { method: 'cashapp', label: 'Cash App', icon: 'smartphone', tint: '#00C244' },
+    { method: 'paypal', label: 'PayPal', icon: 'globe', tint: '#003087' },
+    { method: 'cash', label: 'Cash', icon: 'dollar-sign', tint: '#2DBA7F' },
+  ];
 
 interface CheckoutModalProps {
   visible: boolean;
@@ -67,7 +67,6 @@ interface CheckoutModalProps {
   isProcessing: boolean;
   processingMethod: CheckoutMethod | null;
   paymentSettings: {
-    squareLink: string | null;
     venmoUsername: string | null;
     cashAppTag: string | null;
     paypalQrUri: string | null;
@@ -97,13 +96,13 @@ export function CheckoutModal({
   processingMethod,
   paymentSettings,
 }: CheckoutModalProps) {
+  const insets = useSafeAreaInsets();
+
   const paymentOptions = useMemo(
     () =>
       PAYMENT_BUTTONS.map((button) => {
         let disabled = false;
-        if (button.method === 'square') {
-          disabled = !paymentSettings.squareLink;
-        } else if (button.method === 'venmo') {
+        if (button.method === 'venmo') {
           disabled = !paymentSettings.venmoUsername;
         } else if (button.method === 'cashapp') {
           disabled = !paymentSettings.cashAppTag;
@@ -118,15 +117,14 @@ export function CheckoutModal({
     [
       paymentSettings.cashAppTag,
       paymentSettings.paypalQrUri,
-      paymentSettings.squareLink,
       paymentSettings.venmoUsername,
     ],
   );
 
   return (
     <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
-      <SafeAreaView style={[styles.checkoutContainer, { backgroundColor: themeColors.background }]}>
-        <View style={styles.checkoutHeader}>
+      <View style={[styles.checkoutContainer, { backgroundColor: themeColors.background }]}>
+        <View style={[styles.checkoutHeader, { paddingTop: insets.top + 16 }]}>
           <Text style={[styles.checkoutTitle, { color: themeColors.textPrimary }]}>Cart</Text>
           <Pressable onPress={onClose} hitSlop={12}>
             <Feather name="x" size={20} color={themeColors.textSecondary} />
@@ -134,172 +132,172 @@ export function CheckoutModal({
         </View>
 
         <KeyboardDismissibleView style={{ flex: 1 }} contentContainerStyle={styles.checkoutContent}>
-            {lines.map((line) => (
-              <View
-                key={line.item.id}
-                style={[styles.checkoutLine, { borderColor: themeColors.border }]}
-              >
-                <View style={{ flex: 1 }}>
-                  <Text style={[styles.checkoutLineName, { color: themeColors.textPrimary }]}>
-                    {line.item.name}
-                  </Text>
-                  <Text style={[styles.checkoutLinePrice, { color: themeColors.textSecondary }]}>
-                    {formatCurrencyFromCents(line.item.priceCents, 'USD')}
-                  </Text>
-                </View>
-                <View style={styles.checkoutQuantityControls}>
-                  <Pressable
-                    onPress={() => onUpdateLine(line.item.id, Math.max(0, line.quantity - 1))}
-                    style={({ pressed }) => [
-                      styles.quantityButton,
-                      { backgroundColor: 'rgba(9, 10, 15, 0.08)', opacity: pressed ? 0.7 : 1 },
-                    ]}
-                  >
-                    <Feather name="minus" size={14} color={themeColors.textPrimary} />
-                  </Pressable>
-                  <Text style={[styles.quantityValue, { color: themeColors.textPrimary }]}>
-                    {line.quantity}
-                  </Text>
-                  <Pressable
-                    onPress={() => onUpdateLine(line.item.id, line.quantity + 1)}
-                    style={({ pressed }) => [
-                      styles.quantityButton,
-                      { backgroundColor: themeColors.primary, opacity: pressed ? 0.85 : 1 },
-                    ]}
-                  >
-                    <Feather name="plus" size={14} color={themeColors.surface} />
-                  </Pressable>
-                </View>
-                <Pressable
-                  onPress={() => onRemoveLine(line.item.id)}
-                  hitSlop={14}
-                  style={{ marginLeft: 8 }}
-                >
-                  <Feather name="trash-2" size={16} color={themeColors.error} />
-                </Pressable>
-              </View>
-            ))}
-
-            {lines.length ? (
-              <>
-                <View style={styles.section}>
-                  <Text style={[styles.sectionTitle, { color: themeColors.textPrimary }]}>Discounts</Text>
-                  <View style={styles.presetRow}>
-                    {DISCOUNT_PRESETS.map((preset) => {
-                      const isActive = discountSelection?.id === preset.id;
-                      return (
-                        <Pressable
-                          key={preset.id}
-                          onPress={() => onSelectDiscount(preset)}
-                          style={({ pressed }) => [
-                            styles.presetChip,
-                            {
-                              backgroundColor: isActive ? themeColors.primary : 'transparent',
-                              borderColor: themeColors.primary,
-                              opacity: pressed ? 0.85 : 1,
-                            },
-                          ]}
-                        >
-                          <Text
-                            style={[
-                              styles.presetChipText,
-                              { color: isActive ? themeColors.surface : themeColors.primary },
-                            ]}
-                          >
-                            {preset.label}
-                          </Text>
-                        </Pressable>
-                      );
-                    })}
-                  </View>
-                  <Pressable onPress={onClearDiscount} style={styles.linkButton}>
-                    <Text style={[styles.linkButtonText, { color: themeColors.textSecondary }]}>
-                      Clear discount
-                    </Text>
-                  </Pressable>
-                </View>
-
-                <View style={[styles.section, styles.taxRow]}>
-                  <View>
-                    <Text style={[styles.sectionTitle, { color: themeColors.textPrimary }]}>Sales tax</Text>
-                    <Text style={{ color: themeColors.textSecondary, fontSize: 13, marginTop: 4 }}>
-                      Apply tax automatically during checkout.
-                    </Text>
-                  </View>
-                  <Switch value={taxEnabled} onValueChange={onToggleTax} />
-                </View>
-
-                {taxEnabled ? (
-                  <View style={styles.inputRow}>
-                    <Text style={[styles.inputLabel, { color: themeColors.textSecondary }]}>Rate (%)</Text>
-                    <TextInput
-                      value={taxRateInput}
-                      onChangeText={onTaxRateChange}
-                      keyboardType="decimal-pad"
-                      placeholder="8.5"
-                      placeholderTextColor={themeColors.textMuted}
-                      style={[
-                        styles.textInput,
-                        { borderColor: themeColors.border, color: themeColors.textPrimary },
-                      ]}
-                    />
-                  </View>
-                ) : null}
-
-                <View style={[styles.section, { gap: 8 }]}>
-                  <SummaryRow
-                    label="Subtotal"
-                    value={formatCurrencyFromCents(subtotalCents, 'USD')}
-                    themeColors={themeColors}
-                  />
-                  <SummaryRow
-                    label="Discounts"
-                    value={`-${formatCurrencyFromCents(discountCents, 'USD')}`}
-                    themeColors={themeColors}
-                  />
-                  <SummaryRow
-                    label="Tax"
-                    value={formatCurrencyFromCents(taxCents, 'USD')}
-                    themeColors={themeColors}
-                  />
-                  <SummaryRow
-                    label="Total"
-                    value={formatCurrencyFromCents(totalCents, 'USD')}
-                    themeColors={themeColors}
-                    emphasize
-                  />
-                </View>
-
-                <View style={[styles.section, { gap: 12 }]}>
-                  <Text style={[styles.sectionTitle, { color: themeColors.textPrimary }]}>
-                    Take payment
-                  </Text>
-                  <View style={styles.paymentButtonGrid}>
-                    {paymentOptions.map((option) => (
-                      <PaymentButton
-                        key={option.method}
-                        label={option.label}
-                        icon={option.icon}
-                        onPress={() => onCheckout(option.method)}
-                        themeColors={themeColors}
-                        disabled={option.disabled || isProcessing}
-                        tintColor={option.tint}
-                        loading={isProcessing && processingMethod === option.method}
-                      />
-                    ))}
-                  </View>
-                </View>
-              </>
-            ) : (
-              <View style={styles.emptyCartContainer}>
-                <Feather name="shopping-cart" size={24} color={themeColors.textMuted} />
-                <Text style={{ color: themeColors.textSecondary, marginTop: 8 }}>
-                  Add items to your cart to begin checkout.
+          {lines.map((line) => (
+            <View
+              key={line.item.id}
+              style={[styles.checkoutLine, { borderColor: themeColors.border }]}
+            >
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.checkoutLineName, { color: themeColors.textPrimary }]}>
+                  {line.item.name}
+                </Text>
+                <Text style={[styles.checkoutLinePrice, { color: themeColors.textSecondary }]}>
+                  {formatCurrencyFromCents(line.item.priceCents, 'USD')}
                 </Text>
               </View>
-            )}
+              <View style={styles.checkoutQuantityControls}>
+                <Pressable
+                  onPress={() => onUpdateLine(line.item.id, Math.max(0, line.quantity - 1))}
+                  style={({ pressed }) => [
+                    styles.quantityButton,
+                    { backgroundColor: 'rgba(9, 10, 15, 0.08)', opacity: pressed ? 0.7 : 1 },
+                  ]}
+                >
+                  <Feather name="minus" size={14} color={themeColors.textPrimary} />
+                </Pressable>
+                <Text style={[styles.quantityValue, { color: themeColors.textPrimary }]}>
+                  {line.quantity}
+                </Text>
+                <Pressable
+                  onPress={() => onUpdateLine(line.item.id, line.quantity + 1)}
+                  style={({ pressed }) => [
+                    styles.quantityButton,
+                    { backgroundColor: themeColors.primary, opacity: pressed ? 0.85 : 1 },
+                  ]}
+                >
+                  <Feather name="plus" size={14} color={themeColors.surface} />
+                </Pressable>
+              </View>
+              <Pressable
+                onPress={() => onRemoveLine(line.item.id)}
+                hitSlop={14}
+                style={{ marginLeft: 8 }}
+              >
+                <Feather name="trash-2" size={16} color={themeColors.error} />
+              </Pressable>
+            </View>
+          ))}
+
+          {lines.length ? (
+            <>
+              <View style={styles.section}>
+                <Text style={[styles.sectionTitle, { color: themeColors.textPrimary }]}>Discounts</Text>
+                <View style={styles.presetRow}>
+                  {DISCOUNT_PRESETS.map((preset) => {
+                    const isActive = discountSelection?.id === preset.id;
+                    return (
+                      <Pressable
+                        key={preset.id}
+                        onPress={() => onSelectDiscount(preset)}
+                        style={({ pressed }) => [
+                          styles.presetChip,
+                          {
+                            backgroundColor: isActive ? themeColors.primary : 'transparent',
+                            borderColor: themeColors.primary,
+                            opacity: pressed ? 0.85 : 1,
+                          },
+                        ]}
+                      >
+                        <Text
+                          style={[
+                            styles.presetChipText,
+                            { color: isActive ? themeColors.surface : themeColors.primary },
+                          ]}
+                        >
+                          {preset.label}
+                        </Text>
+                      </Pressable>
+                    );
+                  })}
+                </View>
+                <Pressable onPress={onClearDiscount} style={styles.linkButton}>
+                  <Text style={[styles.linkButtonText, { color: themeColors.textSecondary }]}>
+                    Clear discount
+                  </Text>
+                </Pressable>
+              </View>
+
+              <View style={[styles.section, styles.taxRow]}>
+                <View>
+                  <Text style={[styles.sectionTitle, { color: themeColors.textPrimary }]}>Sales tax</Text>
+                  <Text style={{ color: themeColors.textSecondary, fontSize: 13, marginTop: 4 }}>
+                    Apply tax automatically during checkout.
+                  </Text>
+                </View>
+                <Switch value={taxEnabled} onValueChange={onToggleTax} />
+              </View>
+
+              {taxEnabled ? (
+                <View style={styles.inputRow}>
+                  <Text style={[styles.inputLabel, { color: themeColors.textSecondary }]}>Rate (%)</Text>
+                  <TextInput
+                    value={taxRateInput}
+                    onChangeText={onTaxRateChange}
+                    keyboardType="decimal-pad"
+                    placeholder="8.5"
+                    placeholderTextColor={themeColors.textMuted}
+                    style={[
+                      styles.textInput,
+                      { borderColor: themeColors.border, color: themeColors.textPrimary },
+                    ]}
+                  />
+                </View>
+              ) : null}
+
+              <View style={[styles.section, { gap: 8 }]}>
+                <SummaryRow
+                  label="Subtotal"
+                  value={formatCurrencyFromCents(subtotalCents, 'USD')}
+                  themeColors={themeColors}
+                />
+                <SummaryRow
+                  label="Discounts"
+                  value={`-${formatCurrencyFromCents(discountCents, 'USD')}`}
+                  themeColors={themeColors}
+                />
+                <SummaryRow
+                  label="Tax"
+                  value={formatCurrencyFromCents(taxCents, 'USD')}
+                  themeColors={themeColors}
+                />
+                <SummaryRow
+                  label="Total"
+                  value={formatCurrencyFromCents(totalCents, 'USD')}
+                  themeColors={themeColors}
+                  emphasize
+                />
+              </View>
+
+              <View style={[styles.section, { gap: 12 }]}>
+                <Text style={[styles.sectionTitle, { color: themeColors.textPrimary }]}>
+                  Take payment
+                </Text>
+                <View style={styles.paymentButtonGrid}>
+                  {paymentOptions.map((option) => (
+                    <PaymentButton
+                      key={option.method}
+                      label={option.label}
+                      icon={option.icon}
+                      onPress={() => onCheckout(option.method)}
+                      themeColors={themeColors}
+                      disabled={option.disabled || isProcessing}
+                      tintColor={option.tint}
+                      loading={isProcessing && processingMethod === option.method}
+                    />
+                  ))}
+                </View>
+              </View>
+            </>
+          ) : (
+            <View style={styles.emptyCartContainer}>
+              <Feather name="shopping-cart" size={24} color={themeColors.textMuted} />
+              <Text style={{ color: themeColors.textSecondary, marginTop: 8 }}>
+                Add items to your cart to begin checkout.
+              </Text>
+            </View>
+          )}
         </KeyboardDismissibleView>
-      </SafeAreaView>
+      </View>
     </Modal>
   );
 }
@@ -391,7 +389,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 20,
-    paddingVertical: 16,
+    paddingBottom: 16,
     borderBottomWidth: 1,
     borderBottomColor: 'rgba(0,0,0,0.06)',
   },

@@ -6,7 +6,6 @@ import {
   Linking,
   Modal,
   Pressable,
-  Share,
   StyleSheet,
   Text,
   TextInput,
@@ -46,12 +45,11 @@ type PaymentCallout = {
   onPress: () => void;
 };
 
-const PAYMENT_SETTING_KEYS = ['squareLink', 'venmoUsername', 'cashAppTag', 'paypalQrUri'] as const;
+const PAYMENT_SETTING_KEYS = ['venmoUsername', 'cashAppTag', 'paypalQrUri'] as const;
 const USER_SETTING_KEYS = [...PAYMENT_SETTING_KEYS, 'taxEnabled', 'taxRate'] as const;
 const CALL_OUT_DISMISSALS_KEY = (userId: string) => `sale_callouts_${userId}`;
 
 const DEFAULT_PAYMENT_SETTINGS: Record<(typeof PAYMENT_SETTING_KEYS)[number], string | null> = {
-  squareLink: null,
   venmoUsername: null,
   cashAppTag: null,
   paypalQrUri: null,
@@ -116,77 +114,73 @@ export default function SaleScreen() {
     }
   }, [error]);
 
+  const loadSettings = useCallback(async () => {
+    if (!userId) {
+      setPaymentSettings(DEFAULT_PAYMENT_SETTINGS);
+      setDismissedCallouts([]);
+      settingsLoadedRef.current = false;
+      return;
+    }
+    try {
+      const [settingsResponse, storedDismissals] = await Promise.all([
+        fetchUserSettings(
+          userId,
+          USER_SETTING_KEYS.map((key) => key),
+        ),
+        AsyncStorage.getItem(CALL_OUT_DISMISSALS_KEY(userId)),
+      ]);
+      const normalizedSettings: typeof paymentSettings = { ...DEFAULT_PAYMENT_SETTINGS };
+      PAYMENT_SETTING_KEYS.forEach((key) => {
+        normalizedSettings[key] = settingsResponse[key] ?? null;
+      });
+      setPaymentSettings(normalizedSettings);
+      const taxEnabledSetting = settingsResponse.taxEnabled;
+      const taxRateSetting = settingsResponse.taxRate;
+      if (typeof taxEnabledSetting === 'string') {
+        setTaxEnabled(taxEnabledSetting === 'true' || taxEnabledSetting === '1');
+      }
+      if (typeof taxRateSetting === 'string' && taxRateSetting.trim().length > 0) {
+        setTaxRateInput(taxRateSetting);
+      }
+      if (storedDismissals) {
+        try {
+          const parsed = JSON.parse(storedDismissals);
+          if (Array.isArray(parsed)) {
+            setDismissedCallouts(parsed);
+          }
+        } catch {
+          setDismissedCallouts([]);
+        }
+      } else {
+        setDismissedCallouts([]);
+      }
+      settingsLoadedRef.current = true;
+    } catch (settingsError) {
+      console.warn('Failed to load payment settings', settingsError);
+      setPaymentSettings(DEFAULT_PAYMENT_SETTINGS);
+      settingsLoadedRef.current = false;
+    }
+  }, [userId]);
+
   useFocusEffect(
     useCallback(() => {
       if (!userId) return undefined;
       void refresh();
+      void loadSettings();
       return undefined;
-    }, [refresh, userId]),
+    }, [refresh, loadSettings, userId]),
   );
 
   useEffect(() => {
-    let isMounted = true;
-    const loadSettings = async () => {
-      if (!userId) {
-        setPaymentSettings(DEFAULT_PAYMENT_SETTINGS);
-        setDismissedCallouts([]);
-        settingsLoadedRef.current = false;
-        return;
-      }
-      try {
-        const [settingsResponse, storedDismissals] = await Promise.all([
-          fetchUserSettings(
-            userId,
-            USER_SETTING_KEYS.map((key) => key),
-          ),
-          AsyncStorage.getItem(CALL_OUT_DISMISSALS_KEY(userId)),
-        ]);
-        if (!isMounted) return;
-        const normalizedSettings: typeof paymentSettings = { ...DEFAULT_PAYMENT_SETTINGS };
-        PAYMENT_SETTING_KEYS.forEach((key) => {
-          normalizedSettings[key] = settingsResponse[key] ?? null;
-        });
-        setPaymentSettings(normalizedSettings);
-        const taxEnabledSetting = settingsResponse.taxEnabled;
-        const taxRateSetting = settingsResponse.taxRate;
-        if (typeof taxEnabledSetting === 'string') {
-          setTaxEnabled(taxEnabledSetting === 'true' || taxEnabledSetting === '1');
-        }
-        if (typeof taxRateSetting === 'string' && taxRateSetting.trim().length > 0) {
-          setTaxRateInput(taxRateSetting);
-        }
-        if (storedDismissals) {
-          try {
-            const parsed = JSON.parse(storedDismissals);
-            if (Array.isArray(parsed)) {
-              setDismissedCallouts(parsed);
-            }
-          } catch {
-            setDismissedCallouts([]);
-          }
-        } else {
-          setDismissedCallouts([]);
-        }
-        settingsLoadedRef.current = true;
-      } catch (settingsError) {
-        console.warn('Failed to load payment settings', settingsError);
-        if (isMounted) {
-          setPaymentSettings(DEFAULT_PAYMENT_SETTINGS);
-          settingsLoadedRef.current = false;
-        }
-      }
-    };
-
     loadSettings();
     return () => {
-      isMounted = false;
       settingsLoadedRef.current = false;
     };
-  }, [userId]);
+  }, [loadSettings]);
 
   useEffect(() => {
     if (!userId) return;
-    AsyncStorage.setItem(CALL_OUT_DISMISSALS_KEY(userId), JSON.stringify(dismissedCallouts)).catch(() => {});
+    AsyncStorage.setItem(CALL_OUT_DISMISSALS_KEY(userId), JSON.stringify(dismissedCallouts)).catch(() => { });
   }, [dismissedCallouts, userId]);
 
   useEffect(() => {
@@ -222,16 +216,6 @@ export default function SaleScreen() {
 
   const callouts: PaymentCallout[] = useMemo(() => {
     const tips: PaymentCallout[] = [];
-    if (!paymentSettings.squareLink) {
-      tips.push({
-        key: 'square-link',
-        tone: 'primary',
-        title: 'Link your Square checkout',
-        message: 'Add your Square payment URL so you can hand off card payments instantly.',
-        actionLabel: 'Add Square link',
-        onPress: () => router.push('/(tabs)/settings'),
-      });
-    }
     if (!paymentSettings.paypalQrUri) {
       tips.push({
         key: 'paypal-qr',
@@ -319,7 +303,7 @@ export default function SaleScreen() {
     (value: boolean) => {
       setTaxEnabled(value);
       if (settingsLoadedRef.current && userId) {
-        setUserSetting(userId, 'taxEnabled', value ? 'true' : 'false').catch(() => {});
+        setUserSetting(userId, 'taxEnabled', value ? 'true' : 'false').catch(() => { });
       }
     },
     [userId],
@@ -329,7 +313,7 @@ export default function SaleScreen() {
     (value: string) => {
       setTaxRateInput(value);
       if (settingsLoadedRef.current && userId) {
-        setUserSetting(userId, 'taxRate', value).catch(() => {});
+        setUserSetting(userId, 'taxRate', value).catch(() => { });
       }
     },
     [userId],
@@ -372,21 +356,6 @@ export default function SaleScreen() {
     return summaryLines.join('\n');
   }, [cartLines, discountCents, taxCents]);
 
-  const shareOrderSummary = useCallback(
-    async (summary: string) => {
-      if (!summary) return;
-      try {
-        await Share.share({
-          title: 'BoothBrain Sale Summary',
-          message: `Order total: ${formatCurrencyFromCents(grandTotalCents, 'USD')}\n\n${summary}`,
-        });
-      } catch {
-        // ignore share errors
-      }
-    },
-    [grandTotalCents],
-  );
-
   const handleCheckout = useCallback(
     async (paymentMethod: CheckoutMethod) => {
       if (!cartLines.length) {
@@ -397,16 +366,18 @@ export default function SaleScreen() {
         setFeedback({ type: 'error', message: 'Session owner not available yet.' });
         return;
       }
-      if (isProcessingCheckout) return;
+      if (isProcessingCheckout) {
+        return;
+      }
 
       setIsProcessingCheckout(true);
       setActivePaymentMethod(paymentMethod);
 
       const isCashPayment = paymentMethod === 'cash';
       const paymentUrlMap: Record<CheckoutMethod, string | null> = {
-        square: paymentSettings.squareLink,
+        square: 'square-commerce-v1://',
         venmo: paymentSettings.venmoUsername
-          ? `https://venmo.com/${paymentSettings.venmoUsername.replace(/^@/, '')}`
+          ? `venmo://paycharge?txn=pay&recipients=${paymentSettings.venmoUsername.replace(/^@/, '')}`
           : null,
         cashapp: paymentSettings.cashAppTag
           ? `https://cash.app/${paymentSettings.cashAppTag.replace(/^\$/, '')}`
@@ -436,17 +407,9 @@ export default function SaleScreen() {
             });
           } else {
             try {
-              const supported = await Linking.canOpenURL(target);
-              if (!supported) {
-                setFeedback({
-                  type: 'error',
-                  message: 'Payment app is not installed or the link is invalid.',
-                });
-                return;
-              }
+              await Linking.canOpenURL(target);
               await Linking.openURL(target);
-            } catch (err) {
-              console.warn('Failed to open payment link', err);
+            } catch {
               setFeedback({
                 type: 'error',
                 message: 'Could not open the payment app.',
@@ -487,16 +450,11 @@ export default function SaleScreen() {
             lines: orderLines,
           });
         } catch (err: any) {
-          console.warn('Failed to record order', err);
           setFeedback({
             type: 'error',
             message: err?.message ?? 'Failed to record order. Try again.',
           });
           return;
-        }
-
-        if (!isCashPayment) {
-          await shareOrderSummary(summary);
         }
 
         clearCart();
@@ -521,13 +479,11 @@ export default function SaleScreen() {
       deviceId,
       paymentSettings.cashAppTag,
       paymentSettings.paypalQrUri,
-      paymentSettings.squareLink,
       paymentSettings.venmoUsername,
       clearCart,
       grandTotalCents,
       parsedTaxRate,
       setDiscountSelection,
-      shareOrderSummary,
       buildOrderSummary,
       setCheckoutVisible,
       setFeedback,
@@ -776,8 +732,8 @@ function FeedbackBanner({
     feedback.type === 'success'
       ? { border: successColor, background: 'rgba(45, 186, 127, 0.12)', text: successColor }
       : feedback.type === 'error'
-      ? { border: errorColor, background: 'rgba(243, 105, 110, 0.12)', text: errorColor }
-      : { border: infoColor, background: 'rgba(101, 88, 245, 0.12)', text: infoColor };
+        ? { border: errorColor, background: 'rgba(243, 105, 110, 0.12)', text: errorColor }
+        : { border: infoColor, background: 'rgba(101, 88, 245, 0.12)', text: infoColor };
   return (
     <View style={[styles.feedbackBanner, { borderColor: palette.border, backgroundColor: palette.background }]}>
       <Text style={[styles.feedbackText, { color: palette.text }]}>{feedback.message}</Text>
@@ -954,10 +910,10 @@ function StatusPill({
     tone === 'warning'
       ? { background: 'rgba(247, 181, 0, 0.12)', color: themeColors.warning }
       : tone === 'error'
-      ? { background: 'rgba(243, 105, 110, 0.12)', color: themeColors.error }
-      : tone === 'info'
-      ? { background: 'rgba(101, 88, 245, 0.12)', color: themeColors.primary }
-      : { background: 'rgba(32, 34, 46, 0.08)', color: themeColors.textSecondary };
+        ? { background: 'rgba(243, 105, 110, 0.12)', color: themeColors.error }
+        : tone === 'info'
+          ? { background: 'rgba(101, 88, 245, 0.12)', color: themeColors.primary }
+          : { background: 'rgba(32, 34, 46, 0.08)', color: themeColors.textSecondary };
 
   return (
     <View style={[styles.statusPill, { backgroundColor: palette.background }]}>
