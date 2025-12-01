@@ -23,8 +23,8 @@ BoothBrain is an Expo React Native app for managing vendor booth inventory and s
 - `test-branch` - Development/testing branch (active development)
 
 **Current Status:**
-- `test-branch` at commit `149b26c` (checkout UX improvements)
-- `master` at commit `4521e0c` (2FA + database fixes)
+- Both `master` and `test-branch` at commit `eba0a94` (checkout UX & payment deep links)
+- Branches are in sync - all production changes merged
 - Active development happens on `test-branch`
 - Changes merged to `master` when stable
 
@@ -48,50 +48,29 @@ BoothBrain is an Expo React Native app for managing vendor booth inventory and s
 - All major files now under 1,300 lines (most under 200 lines)
 - Created clear separation of concerns with dedicated service layers
 
-## Current Session (2025-11-30 - Payment App Deep Link Integration)
-- ✅ **Integrated Payment App Deep Links** 📱
-  - **Problem:** Payment buttons weren't opening native apps; needed iOS URL scheme whitelisting.
-  - **Solution:** Added deep link support for Square, Cash App, and Venmo.
-  - **Implementation:**
-    - Added URL schemes to iOS `LSApplicationQueriesSchemes` in `app.config.ts`:
-      - `square-commerce-v1` - Square Point of Sale app
-      - `cashme` - Cash App
-      - `venmo` - Venmo app
-    - Updated `sale.tsx` with comprehensive debug logging for payment flows
-    - Modified URL opening logic to attempt opening even if `canOpenURL` returns false (Expo Go limitation)
-  - **Result:** Tapping payment buttons now opens the respective native apps if installed
-  - **Note:** Full functionality requires production/development build (not Expo Go)
+## Current Session (2025-11-30 - Checkout UX & App Store Prep)
+- ✅ **Fixed Checkout UX Issues**
+  - Cart header positioning fix using `useSafeAreaInsets` (no longer hidden behind status bar)
+  - Payment settings auto-refresh when navigating to Sale tab via `useFocusEffect`
+  - Fixed currency display to show cents (updated `minimumFractionDigits` to 2)
+  - Fixed checkout modal scrolling with `flex: 1` on `KeyboardDismissibleView`
 
-## Previous Session (2025-11-24 - Checkout UX Improvements)
-- ✅ **Fixed Currency Display to Show Cents** 💰
-  - **Problem:** Tax calculations appeared incorrect (showed $12 instead of $12.41)
-  - **Root Cause:** Currency formatter was hiding decimal places (minimumFractionDigits: 0)
-  - **Solution:** Updated `src/utils/currency.ts` to always show 2 decimal places
-  - Changed `minimumFractionDigits` from `0` → `2`
-  - Changed `maximumFractionDigits` from `0` → `2`
-  - **Result:** All prices now display with accurate cents throughout app
-    - Tax: $12.41 (was $12)
-    - Subtotal: $146.00 (was $146)
-    - Total: $158.41 (was $158)
+- ✅ **Integrated Payment App Deep Links**
+  - Added URL schemes to iOS `LSApplicationQueriesSchemes`: `square-commerce-v1`, `cashme`, `venmo`
+  - Changed Venmo from web URL to deep link: `venmo://paycharge?txn=pay&recipients=username`
+  - Removed automatic share sheet after payments
+  - Cleaned up all checkout debug logging for production
 
-- ✅ **Fixed Checkout Modal Scrolling** 📜
-  - **Problem:** Payment buttons cut off at bottom, couldn't scroll to see all options
-  - **Root Cause:** `KeyboardDismissibleView` didn't have flex: 1 to take up available space
-  - **Solution:** Added `style={{ flex: 1 }}` prop to `KeyboardDismissibleView` in CheckoutModal
-  - **Result:** Modal now scrolls properly to show all payment buttons
-
-- ✅ **Code Quality Verified**
-  - TypeScript compilation: ✅ Zero errors (`npm run typecheck`)
-  - ESLint: ✅ Zero errors (`npm run lint`)
+- ✅ **App Store Submission Prep**
+  - Created 7 App Store screenshots covering all major features
+  - Wrote App Store description with payment disclaimer
+  - Created demo inventory SQL script (32 generic vendor items)
+  - Screenshot guide and sizing documentation (1284 × 2778 px)
 
 - 📝 **Files Modified:**
-  - `src/utils/currency.ts` - Updated decimal place formatting
-  - `src/components/modals/CheckoutModal.tsx` - Added flex: 1 for scrolling
-
-- 🎯 **User Impact:**
-  - Accurate price display with cents for all transactions
-  - Full access to all payment methods in checkout
-  - Better checkout experience on all screen sizes
+  - `CheckoutModal.tsx` - Header positioning, removed debug logs
+  - `sale.tsx` - Payment settings refresh, Venmo deep link, removed share sheet
+  - `app.config.ts` - Added payment app URL schemes
 
 ## Previous Session (2025-11-22 - Replaced Biometrics with 2FA + Database Fixes)
 - ✅ **Removed All Biometric Authentication** 🗑️
@@ -218,95 +197,12 @@ BoothBrain is an Expo React Native app for managing vendor booth inventory and s
   - Database migrations ensure clean user deletion
   - All code passing TypeScript and ESLint checks
 
-## Previous Session (2025-11-17 - Login UI Enhancement & Biometric Features)
-- ✅ **Modern Login Screen Design** 🎨
-  - Added professional Ocean Blue gradient background (`#0575E6` → `#021B79`)
-  - Integrated transparent BoothBrain logo (BBtrans.png, 140×140px)
-  - Enhanced card design with shadows and elevation for depth
-  - Larger, bolder typography (32px title, weight 700)
-  - Improved spacing and modern styling throughout
-  - Fixed path to use `../../misc/BBtrans.png` (transparent logo)
-  - Updated `app/auth/sign-in.tsx` with LinearGradient component
-
-- ✅ **Remember Me Feature** 💾
-  - Added toggle switch for "Remember me" on login screen
-  - Saves user email to AsyncStorage when enabled
-  - Auto-loads saved email on app restart
-  - Users only need to enter password on subsequent logins
-  - Clean, accessible switch UI matching app theme
-
-- ✅ **Biometric Login on Login Screen** 🔐
-  - Added "Sign in with Biometrics" button to login screen
-  - Shows device-specific icon (Face ID scan icon for facial, fingerprint icon for touch)
-  - Generic button text: "Sign in with Biometrics" (not device-specific)
-  - **IMPORTANT:** Button only appears when ALL conditions are met:
-    1. Biometrics are enabled in Settings
-    2. Device has biometric hardware enrolled
-    3. **User has a valid saved Supabase session** (not just saved email)
-  - One-tap biometric authentication for instant access
-  - Graceful fallback with "Or continue with password" divider
-  - Securely uses existing Supabase session tokens (no password storage)
-  - Session refresh on successful biometric auth
-
-  **Known Limitation in Expo Go:**
-  - In development (Expo Go), sessions may not persist reliably between app restarts
-  - The biometric login button may not appear until after first login in current session
-  - Works reliably in production builds (TestFlight/App Store)
-  - To test: Log in with password → Sign out → Button should appear on login screen
-
-- ✅ **Biometric Security Settings** 🛡️
-  - Created `src/utils/biometricPreferences.ts` - User preference storage with AsyncStorage
-  - Created `src/components/settings/SecuritySection.tsx` - New Security settings UI component
-  - Updated `src/utils/biometrics.ts` - Now checks both device capability AND user preference
-  - Added Security section to Settings screen (below Password section)
-  - Shows device-specific labels (Face ID/Touch ID/Fingerprint)
-  - Displays helpful message if biometrics aren't available/enrolled
-  - User can enable/disable biometric authentication
-  - Preference controls both app-resume auth AND login screen button
-
-- ✅ **Enabled Real Firebase Crashlytics** 🔥
-  - Replaced mock implementation with real `@react-native-firebase/crashlytics`
-  - Used conditional `require()` to gracefully handle Expo Go environment
-  - Crashlytics works in production builds (TestFlight/App Store)
-  - Gracefully logs to console in Expo Go (no crashes)
-  - All crash reporting, events, user tracking now functional
-  - Updated `src/lib/services/firebase.ts` with production-ready implementation
-
-- ✅ **Documented Windows/WSL Development Workflow**
-  - Added critical note: Always run `npm install` and `npm start` from Windows PowerShell
-  - WSL installs Linux binaries that don't work in Windows PowerShell
-  - Added troubleshooting steps for `'expo' is not recognized` error
-  - Added "Development Environment" section at top of CLAUDE.md
-
-- ✅ **Biometric Login Fixes** 🔧
-  - Fixed "No saved session found" error by requiring valid session (not just saved email)
-  - Changed button text from device-specific to generic "Sign in with Biometrics"
-  - Updated session check logic to only show button when session exists
-  - Documented known limitation in Expo Go regarding session persistence
-
-- ✅ **Code Quality Verified**
-  - TypeScript compilation: ✅ Zero errors (`npm run typecheck`)
-  - ESLint: ✅ Zero errors (`npm run lint`)
-  - Updated ESLint config to allow require() for image assets (.png, .jpg, etc.)
-  - Added ESLint disable comment for Firebase conditional require
-
-- 📝 **Files Created:**
-  - `src/utils/biometricPreferences.ts` - Biometric preference storage
-  - `src/components/settings/SecuritySection.tsx` - Security settings UI (198 lines)
-
-- 📝 **Files Modified:**
-  - `app/auth/sign-in.tsx` - Modern design, gradient, logo, Remember Me, biometric login
-  - `src/utils/biometrics.ts` - Updated to check user preferences
-  - `app/(tabs)/settings.tsx` - Added SecuritySection
-  - `eslint.config.mjs` - Added exception for image requires
-  - `src/lib/services/firebase.ts` - Enabled real Crashlytics with conditional import
-  - `CLAUDE.md` - Added Windows/WSL development notes and current session
-
-- 🎯 **Ready for Next TestFlight Build:**
-  - All login UX improvements ready for production
-  - Firebase Crashlytics will automatically work in next build
-  - Biometric authentication fully functional
-  - Modern, professional login experience
+## Previous Sessions Summary (2025-11-14 to 2025-11-22)
+- ✅ Modern login screen with gradient background and BoothBrain logo
+- ✅ Remember Me feature saves email to AsyncStorage
+- ✅ Firebase Crashlytics enabled (production builds only)
+- ✅ Biometric auth removed (replaced with 2FA due to Expo Go issues)
+- ✅ iOS session persistence and timeout fixes
 
 ## Previous Session #1 (2025-11-15 - Build Debug & Production Build)
 - ✅ **Fixed ALL EAS Build Issues - 5 Critical Bugs Resolved!** 🎉
@@ -429,115 +325,12 @@ BoothBrain is an Expo React Native app for managing vendor booth inventory and s
   - Added preview submit profile to eas.json
   - Created EXPO_BUILD_GUIDE.md with complete build/deployment instructions
 
-## Previous Session (2025-11-14)
-- ✅ **Implemented Biometric Authentication + Persistent Sessions** 🔐
-- ✅ **Fixed "invalid token" logout issue on iOS** - Users no longer forced to re-login after inactivity
-- ✅ **Fixed iOS Expo Go timeout/infinite loading issues** - App now loads instantly
-- ✅ Installed and integrated `expo-local-authentication` package
-- ✅ Created biometric authentication utility (`src/utils/biometrics.ts`):
-  - Face ID/Touch ID support for iOS
-  - Fingerprint support for Android
-  - Graceful fallback to device passcode
-  - User-friendly error handling
-  - Auto-detection of biometric capability
-- ✅ Updated `SupabaseAuthProvider` with **Silent Token Refresh**:
-  - Automatically refreshes expired tokens in background with timeout wrappers
-  - No more forced logouts after inactivity
-  - Users stay logged in indefinitely (secure with biometrics)
-  - Added timeout protection to all refresh calls to prevent iOS hanging
-- ✅ Implemented **Optimistic Session Loading** for iOS:
-  - Loads cached session immediately for fast startup
-  - Verifies and refreshes token in background
-  - No more infinite loading wheel on iOS
-  - iOS dev mode (Expo Go) skips blocking session checks entirely
-- ✅ Added **Biometric Auth on App Resume**:
-  - Prompts for Face ID/Touch ID when app comes to foreground
-  - Temporarily hides sensitive content until authenticated
-  - Signs out user if biometric auth fails (security measure)
-  - Refreshes token after successful biometric auth
-- ✅ **App Configuration Updates**:
-  - Added biometric permissions for iOS (NSFaceIDUsageDescription) and Android (USE_BIOMETRIC, USE_FINGERPRINT)
-  - Changed app name from "BoothBrainNext" to "BoothBrain"
-  - Updated packages to Expo SDK 54.0.23 (expo, expo-camera)
-  - Registered expo-local-authentication plugin
-- ✅ **UI Improvements**:
-  - Shortened subscription button text for better fit: "Billing Portal" and "Refresh"
-- ✅ **Testing & Quality**:
-  - Tested successfully in Expo Go using tunnel mode
-  - Production readiness assessment completed
-  - Security audit completed - **9.5/10 security score**
-  - Zero TypeScript errors, zero ESLint errors
-- ✅ Added regression prevention and quality gates to CLAUDE.md
-- ✅ **Merged to master** - All changes production-ready
-
-Previous session (2025-11-10):
-- ✅ **Fixed all ESLint unused variable/import errors** - 22 errors resolved across 10 files
-- ✅ TypeScript compilation still passes with zero errors
-
-Previous session (2025-11-09):
-- ✅ **Fixed session ending error** - PostgREST schema mismatch resolved
-- ✅ Fixed "Could not find the 'ended_at' column" error when ending sessions:
-  - Updated `sessionApi.ts` to use `is_active: false` instead of non-existent `ended_at` column
-  - Sessions table uses `is_active` boolean field, not `ended_at` timestamp
-  - Added missing `is_active` field to SessionRow types in both `session.ts` and `database.ts`
-  - Fixed SessionRow type in `database.ts` to match actual DB schema (added `organization_id`, `expires_at`, etc.)
-
-Previous session (2025-11-08):
-- ✅ **Major TypeScript type system overhaul completed!**
-- ✅ Created comprehensive database types (`src/types/database.ts`):
-  - All Supabase table row types (ProfileRow, ItemRow, OrderRow, EventRow, etc.)
-  - Error handling utilities (isSupabaseError, getErrorMessage)
-  - Type guards and error message extraction helpers
-- ✅ Fixed all TypeScript compilation errors - `npm run typecheck` now passes!
-- ✅ Removed all `any` types from error handling throughout codebase
-- ✅ Updated API files to use proper database types:
-  - inventory.ts, events.ts, orders.ts now fully type-safe
-  - Fixed Promise type issues in auth services
-- ✅ Verified all loading states are properly implemented
-
-Previous session (2025-11-06):
-- ✅ **SessionProvider refactoring** - reduced file by 265 lines (398 → 133 lines, 67% reduction!)
-- ✅ Created session service modules:
-  - `deviceIdService.ts` (47 lines) - Device ID generation and management
-  - `sessionStorage.ts` (68 lines) - Session persistence and validation
-  - `sessionApi.ts` (168 lines) - Session API operations
-  - `useSessionOperations.ts` (150 lines) - Session operations hook
-  - `session.ts` types (42 lines) - Session type definitions
-
-Previous:
-- ✅ **Massive SupabaseAuthProvider refactoring** - reduced file by 359 lines (556 → 197 lines, 64% reduction!)
-- ✅ Created auth service modules:
-  - `profileService.ts` (95 lines) - Profile fetching and updates
-  - `subscriptionService.ts` (127 lines) - Subscription management
-  - `authUserBuilder.ts` (23 lines) - User object construction
-  - `useAuthOperations.ts` (195 lines) - Auth operations hook
-- ✅ Created asyncHelpers.ts (195 lines) - reusable async utilities
-  - `withTimeout` - Promise timeout wrapper
-  - `withRetry` - Exponential backoff retry logic
-  - `withTimeoutAndRetry` - Combined helper
-  - `parallelLimit` - Concurrent operations with limit
-  - `debounceAsync` - Async function debouncing
-  - `getTimeout` - Platform-aware timeout configuration
-
-Previous in session:
-- ✅ **Extracted CSV logic from inventory.tsx** - reduced file by 482 lines (1,623 → 1,141)
-- ✅ Created useCsvImportExport hook (217 lines) - handles all CSV import/export logic
-- ✅ Created ImportModal component (143 lines) - CSV and Google Sheets import UI
-- ✅ Created ImportSummaryCard component (64 lines) - displays import results
-- ✅ Created InventoryListItem component (82 lines) - reusable item display
-
-Previous:
-- ✅ **Extracted event components from home.tsx** - reduced file by 656 lines (1,767 → 1,111)
-- ✅ Created EventModal component (453 lines) - complete event creation/editing with date picker
-- ✅ Created TaskModal component (173 lines) - task management for events
-- ✅ Created EventCard component (212 lines) - reusable event display component
-- ✅ **Extracted modals from sale.tsx** - reduced file by 592 lines (1,863 → 1,271)
-- ✅ **Completed settings.tsx refactoring** - reduced from 2,174 → 1,092 lines
-
-Previous session (2025-10-31):
-- ✅ Fixed dev server permission errors - cleaned node_modules and reinstalled dependencies
-- ✅ Reorganized file structure - moved misplaced files to correct `/src` directories
-- ✅ Created Firebase mock for Expo Go - app now runs without development build
+## Earlier Sessions (2025-10 to 2025-11)
+- ✅ Major refactoring: 3,436 lines removed across 6 files
+- ✅ TypeScript type system overhaul - zero `any` types, comprehensive database.ts
+- ✅ Session ending error fixed (`is_active` field vs `ended_at` column)
+- ✅ ESLint cleanup - 22 unused variable/import errors resolved
+- ✅ Dev server permission errors fixed
 
 ## Current Focus
 - ✅ **COMPLETED:** settings.tsx refactoring (2,174 → 1,092 lines, 50% reduction)
