@@ -3,6 +3,7 @@
  */
 
 import { supabase } from '@/lib/supabase';
+import * as Crypto from 'expo-crypto';
 
 export type TwoFactorEnrollment = {
   id: string;
@@ -19,6 +20,11 @@ export type TwoFactorFactor = {
   status: 'verified' | 'unverified';
   createdAt: string;
   updatedAt: string;
+};
+
+export type RecoveryCode = {
+  code: string;
+  hash: string;
 };
 
 /**
@@ -290,5 +296,206 @@ export async function getAssuranceLevel(): Promise<{
   } catch (error) {
     console.error('Error getting assurance level:', error);
     return { level: null, nextLevel: null };
+  }
+}
+
+// ============================================================================
+// Recovery Codes
+// ============================================================================
+
+/**
+ * Simple hash function for recovery codes
+ * Uses SHA-256 with salt for security
+ */
+async function hashRecoveryCode(code: string): Promise<string> {
+  // Use expo-crypto for React Native compatibility
+  const dataToHash = code + 'boothbrain-2fa-salt';
+  const hashHex = await Crypto.digestStringAsync(
+    Crypto.CryptoDigestAlgorithm.SHA256,
+    dataToHash
+  );
+
+  return hashHex;
+}
+
+/**
+ * Generate a random recovery code (8 characters: XXXX-XXXX)
+ */
+function generateRecoveryCodeString(): string {
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // Exclude ambiguous characters (0, O, 1, I)
+  let code = '';
+
+  for (let i = 0; i < 8; i++) {
+    const randomIndex = Math.floor(Math.random() * chars.length);
+    code += chars[randomIndex];
+
+    // Add hyphen in the middle for readability
+    if (i === 3) {
+      code += '-';
+    }
+  }
+
+  return code;
+}
+
+/**
+ * Generate recovery codes for a user
+ * @param userId User ID to generate codes for
+ * @param count Number of codes to generate (default: 10)
+ * @returns Array of recovery codes (plaintext) - MUST be shown to user immediately
+ */
+export async function generateRecoveryCodes(
+  userId: string,
+  count: number = 10
+): Promise<{ success: boolean; codes?: string[]; error?: string }> {
+  try {
+    // Delete existing recovery codes for user
+    const { error: deleteError } = await supabase
+      .from('recovery_codes')
+      .delete()
+      .eq('user_id', userId);
+
+    if (deleteError) {
+      console.error('Failed to delete old recovery codes:', deleteError);
+      return {
+        success: false,
+        error: 'Failed to delete old recovery codes',
+      };
+    }
+
+    // Generate new codes
+    const codes: string[] = [];
+    const codeHashes: { user_id: string; code_hash: string }[] = [];
+
+    for (let i = 0; i < count; i++) {
+      const code = generateRecoveryCodeString();
+      const hash = await hashRecoveryCode(code);
+
+      codes.push(code);
+      codeHashes.push({
+        user_id: userId,
+        code_hash: hash,
+      });
+    }
+
+    // Store hashed codes in database
+    const { error: insertError } = await supabase
+      .from('recovery_codes')
+      .insert(codeHashes);
+
+    if (insertError) {
+      console.error('Failed to store recovery codes:', insertError);
+      return {
+        success: false,
+        error: 'Failed to store recovery codes',
+      };
+    }
+
+    return {
+      success: true,
+      codes, // Return plaintext codes - ONLY shown once!
+    };
+  } catch (error) {
+    console.error('Failed to generate recovery codes:', error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to generate recovery codes',
+    };
+  }
+}
+
+/**
+ * Verify a recovery code during login
+ * @param userId User ID attempting to use recovery code
+ * @param code Recovery code entered by user
+ * @returns True if code is valid and unused, false otherwise
+ */
+export async function verifyRecoveryCode(
+  userId: string,
+  code: string
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    // Hash the provided code
+    const codeHash = await hashRecoveryCode(code.trim().toUpperCase());
+
+    // Check if code exists and is unused
+    const { data: recoveryCode, error: fetchError } = await supabase
+      .from('recovery_codes')
+      .select('id, used_at')
+      .eq('user_id', userId)
+      .eq('code_hash', codeHash)
+      .maybeSingle();
+
+    if (fetchError) {
+      console.error('Failed to verify recovery code:', fetchError);
+      return {
+        success: false,
+        error: 'Failed to verify recovery code',
+      };
+    }
+
+    if (!recoveryCode) {
+      return {
+        success: false,
+        error: 'Invalid recovery code',
+      };
+    }
+
+    if (recoveryCode.used_at) {
+      return {
+        success: false,
+        error: 'Recovery code already used',
+      };
+    }
+
+    // Mark code as used
+    const { error: updateError } = await supabase
+      .from('recovery_codes')
+      .update({ used_at: new Date().toISOString() })
+      .eq('user_id', userId)
+      .eq('code_hash', codeHash);
+
+    if (updateError) {
+      console.error('Failed to mark recovery code as used:', updateError);
+      return {
+        success: false,
+        error: 'Failed to mark recovery code as used',
+      };
+    }
+
+    return { success: true };
+  } catch (error) {
+    console.error('Failed to verify recovery code:', error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Verification failed',
+    };
+  }
+}
+
+/**
+ * Get count of unused recovery codes for a user
+ * @param userId User ID
+ * @returns Count of unused codes
+ */
+export async function getUnusedRecoveryCodeCount(
+  userId: string
+): Promise<number> {
+  try {
+    const { count, error } = await supabase
+      .from('recovery_codes')
+      .select('*', { count: 'exact', head: true })
+      .eq('user_id', userId)
+      .is('used_at', null);
+
+    if (error) {
+      console.error('Failed to get recovery code count:', error);
+      return 0;
+    }
+
+    return count || 0;
+  } catch (error) {
+    console.error('Error getting recovery code count:', error);
+    return 0;
   }
 }
