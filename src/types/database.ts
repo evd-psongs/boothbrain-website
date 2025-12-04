@@ -39,6 +39,10 @@ export type SubscriptionRow = {
   paused_at: string | null;
   pause_used_period_start: string | null;
   pause_allowance_used: boolean;
+  // Apple IAP fields (Phase 2)
+  apple_original_transaction_id: string | null;
+  apple_product_id: string | null;
+  payment_platform: 'stripe' | 'apple' | 'google' | null;
 };
 
 // ============== INVENTORY TABLES ==============

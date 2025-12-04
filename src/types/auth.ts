@@ -34,6 +34,10 @@ export type Subscription = {
   pausedAt: string | null;
   pauseUsedPeriodStart: string | null;
   pauseAllowanceUsed: boolean;
+  // Apple IAP fields (Phase 2)
+  paymentPlatform?: 'stripe' | 'apple' | 'google';
+  appleOriginalTransactionId?: string | null;
+  appleProductId?: string | null;
 };
 
 export type AuthUser = {

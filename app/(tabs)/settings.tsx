@@ -36,6 +36,7 @@ import type { SubscriptionPlan } from '@/types/auth';
 import { getErrorMessage } from '@/types/database';
 import { enforceFreePlanLimits, FREE_PLAN_ITEM_LIMIT } from '@/lib/freePlanLimits';
 import { PAUSE_ALREADY_USED_MESSAGE } from '@/utils/pauseErrors';
+import { isProSubscriptionAvailable, getProUnavailableMessage, isAndroid } from '@/utils/platform';
 
 
 type PendingJoinRequest = {
@@ -771,7 +772,24 @@ export default function SettingsScreen() {
             </View>
           ) : null}
 
-          {availablePlans.length ? (
+          {!isProSubscriptionAvailable() && currentPlanTier === 'free' ? (
+            <View style={[styles.comingSoonCard, {
+              borderColor: theme.colors.primary,
+              backgroundColor: 'rgba(99, 102, 241, 0.08)'
+            }]}>
+              <Text style={[styles.comingSoonTitle, { color: theme.colors.primary }]}>
+                Pro Subscriptions Coming Soon
+              </Text>
+              <Text style={[styles.comingSoonMessage, { color: theme.colors.textSecondary }]}>
+                {getProUnavailableMessage()}
+              </Text>
+              {isAndroid && (
+                <Text style={[styles.comingSoonEta, { color: theme.colors.textMuted }]}>
+                  Expected availability: 1-2 months
+                </Text>
+              )}
+            </View>
+          ) : availablePlans.length ? (
             <View style={styles.planList}>
               <Text style={[styles.planSectionTitle, { color: theme.colors.textSecondary }]}>Upgrade to Pro</Text>
               {showPlansSpinner ? (
@@ -1076,6 +1094,30 @@ const styles = StyleSheet.create({
   pauseBody: {
     fontSize: 13,
     lineHeight: 20,
+  },
+  comingSoonCard: {
+    borderWidth: 2,
+    borderRadius: 12,
+    padding: 20,
+    marginTop: 20,
+    alignItems: 'center',
+  },
+  comingSoonTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    marginBottom: 12,
+    textAlign: 'center',
+  },
+  comingSoonMessage: {
+    fontSize: 14,
+    lineHeight: 22,
+    textAlign: 'center',
+    marginBottom: 8,
+  },
+  comingSoonEta: {
+    fontSize: 13,
+    fontStyle: 'italic',
+    textAlign: 'center',
   },
   pauseRestriction: {
     fontSize: 12,

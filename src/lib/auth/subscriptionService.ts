@@ -23,6 +23,9 @@ export async function fetchSubscription(userId: string): Promise<Subscription | 
     paused_at,
     pause_used_period_start,
     plan_id,
+    payment_platform,
+    apple_original_transaction_id,
+    apple_product_id,
     plans:plan_id (
       id,
       name,
@@ -86,6 +89,9 @@ export async function fetchSubscription(userId: string): Promise<Subscription | 
       pausedAt: raw.paused_at,
       pauseUsedPeriodStart,
       pauseAllowanceUsed,
+      paymentPlatform: raw.payment_platform ?? 'stripe',
+      appleOriginalTransactionId: raw.apple_original_transaction_id ?? null,
+      appleProductId: raw.apple_product_id ?? null,
       plan: planRow
         ? {
             id: planRow.id as string,
@@ -116,9 +122,22 @@ export async function fetchSubscription(userId: string): Promise<Subscription | 
 export function isSubscriptionActive(subscription: Subscription | null): boolean {
   if (!subscription) return false;
 
-  const activeStatuses = ['trialing', 'active', 'past_due'];
+  // Check for pause
   if (subscription.pausedAt) return false;
 
+  // Apple IAP subscriptions - check expiration date
+  if (subscription.paymentPlatform === 'apple') {
+    const now = new Date();
+    const expiresAt = subscription.currentPeriodEnd
+      ? new Date(subscription.currentPeriodEnd)
+      : null;
+
+    // Active if current period hasn't expired yet
+    return expiresAt ? expiresAt > now : false;
+  }
+
+  // Stripe subscriptions - use status field
+  const activeStatuses = ['trialing', 'active', 'past_due'];
   return activeStatuses.includes(subscription.status || '');
 }
 

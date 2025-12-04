@@ -62,6 +62,12 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     ],
     '@react-native-firebase/app',
     '@react-native-firebase/crashlytics',
+    [
+      'react-native-purchases',
+      {
+        apiKey: process.env.REVENUECAT_PUBLIC_API_KEY_IOS,
+      },
+    ],
   ],
   experiments: {
     typedRoutes: true,

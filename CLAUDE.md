@@ -48,7 +48,77 @@ BoothBrain is an Expo React Native app for managing vendor booth inventory and s
 - All major files now under 1,300 lines (most under 200 lines)
 - Created clear separation of concerns with dedicated service layers
 
-## Current Session (2025-11-30 - Checkout UX & App Store Prep)
+## Current Session (2025-12-03 - Apple IAP Phase 1 Setup COMPLETE)
+- ✅ **Apple IAP Strategy Decision**
+  - Analyzed App Store requirements (3.1.1 - subscriptions must use Apple IAP)
+  - Analyzed Google Play requirements (similar to Apple - requires Google Play Billing)
+  - Created comprehensive implementation plan: `docs/APPLE_IAP_IMPLEMENTATION_PLAN.md`
+  - Created Android strategy document: `docs/ANDROID_PAYMENT_STRATEGY.md`
+  - **Decision:** Phased rollout - iOS with Apple IAP first, Android Google Play later
+
+- ✅ **Platform Detection Implementation**
+  - Created `src/utils/platform.ts` with subscription availability checks
+  - Added `isProSubscriptionAvailable()` - returns true only for iOS (Phase 1)
+  - Added `getPaymentProvider()` - returns 'apple' for iOS, 'none' for Android
+  - Added `getProUnavailableMessage()` - user-friendly messaging
+  - Ready for Phase 2: Just change `return false` to `return true` for Android
+
+- ✅ **Settings Screen Updated**
+  - Added "Pro Subscriptions Coming Soon" card for Android users
+  - Shows friendly message: "We're working on bringing all Pro features to Android users"
+  - Displays ETA: "Expected availability: 1-2 months"
+  - iOS users see normal subscription upgrade flow
+  - Seamless platform detection - no confusing UI for unsupported platforms
+
+- ✅ **Phase 1: Setup & Configuration COMPLETE!**
+  - **RevenueCat Account & Project Setup:**
+    - Created RevenueCat account (free tier)
+    - Created BoothBrain project in RevenueCat
+    - Configured iOS app (Bundle ID: com.boothbrain.app)
+    - Obtained and configured API keys
+
+  - **App Store Connect Configuration:**
+    - Created subscription group: "BoothBrain Pro"
+    - Created subscription product: `boothbrain_pro_quarterly`
+      - Price: $29.99 / 3 months (closest to original $27 target)
+      - Display Name: "BoothBrain Pro"
+      - Description: "Up to 500 items & vendor collaboration tools"
+      - Subscription Duration: 3 months
+    - Generated App-Specific Shared Secret
+    - Generated App Store Connect API key (P8 file)
+    - Uploaded P8 key to RevenueCat for product syncing
+
+  - **RevenueCat Product Configuration:**
+    - Created product in RevenueCat: "BoothBrain Pro - Quarterly"
+    - Product ID: `boothbrain_pro_quarterly`
+    - Linked to entitlement: "BoothBrain Pro"
+    - Store Status: "Missing Metadata" (normal - will resolve when app submitted)
+
+  - **Environment Setup:**
+    - Created `.env` file with RevenueCat API key
+    - Added: `REVENUECAT_PUBLIC_API_KEY_IOS=appl_QqZTDbwkjAfMybBUxpeLuKUKjKi`
+    - Existing Supabase keys preserved
+    - File properly ignored in .gitignore
+
+- 📋 **Next Steps:**
+  - Phase 2: Install react-native-purchases package
+  - Phase 3: Create service layer (revenuecatService.ts, subscriptionSync.ts)
+  - Phase 4: Build UI (SubscriptionModal)
+  - Phase 5: Integrate with auth provider
+  - Phase 6: Set up webhooks
+  - Phase 7: Test in sandbox with physical device
+
+- 📝 **Files Created:**
+  - `docs/APPLE_IAP_IMPLEMENTATION_PLAN.md` (1800+ lines) - Complete iOS IAP implementation guide with sandbox testing
+  - `docs/ANDROID_PAYMENT_STRATEGY.md` (600+ lines) - Android monetization strategy
+  - `src/utils/platform.ts` (70 lines) - Platform detection utilities
+  - `.env` - Environment variables with RevenueCat API key
+
+- 📝 **Files Modified:**
+  - `app/(tabs)/settings.tsx` - Added platform detection and "Coming Soon" card for Android
+  - `.env.example` - Added RevenueCat configuration section
+
+## Previous Session (2025-11-30 - Checkout UX & App Store Prep)
 - ✅ **Fixed Checkout UX Issues**
   - Cart header positioning fix using `useSafeAreaInsets` (no longer hidden behind status bar)
   - Payment settings auto-refresh when navigating to Sale tab via `useFocusEffect`
