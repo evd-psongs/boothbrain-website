@@ -92,8 +92,30 @@ export function SubscriptionModal({
     try {
       const customerInfo = await purchasePackage(selectedPackage);
 
-      // Sync to Supabase
-      await syncSubscriptionToSupabase(userId, customerInfo);
+      // Sync to Supabase with retry logic
+      // If sync fails, webhook will be the backup
+      let syncSuccess = false;
+      for (let attempt = 1; attempt <= 3; attempt++) {
+        try {
+          await syncSubscriptionToSupabase(userId, customerInfo);
+          syncSuccess = true;
+          console.log('[SubscriptionModal] Sync succeeded on attempt', attempt);
+          break;
+        } catch (syncErr) {
+          console.error(`[SubscriptionModal] Sync attempt ${attempt} failed:`, syncErr);
+          if (attempt < 3) {
+            // Wait before retry (exponential backoff: 1s, 2s)
+            await new Promise(resolve => setTimeout(resolve, attempt * 1000));
+          }
+        }
+      }
+
+      if (!syncSuccess) {
+        console.warn('[SubscriptionModal] All sync attempts failed, relying on webhook');
+        // Don't fail the purchase - webhook will sync it
+        // Show a different message to user
+        setError('Purchase successful! Subscription will activate shortly.');
+      }
 
       onSuccess();
       onClose();
@@ -114,8 +136,26 @@ export function SubscriptionModal({
     try {
       const customerInfo = await restorePurchases();
 
-      // Sync to Supabase
-      await syncSubscriptionToSupabase(userId, customerInfo);
+      // Sync to Supabase with retry logic
+      let syncSuccess = false;
+      for (let attempt = 1; attempt <= 3; attempt++) {
+        try {
+          await syncSubscriptionToSupabase(userId, customerInfo);
+          syncSuccess = true;
+          console.log('[SubscriptionModal] Restore sync succeeded on attempt', attempt);
+          break;
+        } catch (syncErr) {
+          console.error(`[SubscriptionModal] Restore sync attempt ${attempt} failed:`, syncErr);
+          if (attempt < 3) {
+            await new Promise(resolve => setTimeout(resolve, attempt * 1000));
+          }
+        }
+      }
+
+      if (!syncSuccess) {
+        console.warn('[SubscriptionModal] Restore sync failed, relying on webhook');
+        setError('Purchases restored! Subscription will activate shortly.');
+      }
 
       onSuccess();
       onClose();

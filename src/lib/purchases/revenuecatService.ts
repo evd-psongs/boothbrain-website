@@ -170,10 +170,17 @@ export async function logoutRevenueCat(): Promise<void> {
  * Called when subscription status changes (purchase, renewal, expiration)
  *
  * @param callback - Function to call when customer info updates
+ * @returns Cleanup function to remove the listener
  */
 export function addCustomerInfoUpdateListener(
   callback: (customerInfo: CustomerInfo) => void
-): void {
+): () => void {
   console.log('[RevenueCat] Adding customer info update listener');
   Purchases.addCustomerInfoUpdateListener(callback);
+
+  // Return cleanup function
+  return () => {
+    console.log('[RevenueCat] Removing customer info update listener');
+    Purchases.removeCustomerInfoUpdateListener(callback);
+  };
 }

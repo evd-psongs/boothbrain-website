@@ -10,6 +10,8 @@
 
 import { CustomerInfo } from 'react-native-purchases';
 import { supabase } from '@/lib/supabase';
+import { mapSubscriptionStatus } from './subscriptionStatusMapper';
+import { getProPlanId } from './planCache';
 
 /**
  * Sync RevenueCat subscription to Supabase
@@ -32,16 +34,17 @@ export async function syncSubscriptionToSupabase(
     }
 
     // Extract subscription details from entitlement
-    // Use product identifier + user ID as unique key since originalTransactionId isn't available
     const productId = proEntitlement.productIdentifier;
     const periodType = proEntitlement.periodType; // 'NORMAL', 'INTRO', 'TRIAL', 'PREPAID'
     const expirationDate = proEntitlement.expirationDate;
     const willRenew = proEntitlement.willRenew;
     const unsubscribeDetectedAt = proEntitlement.unsubscribeDetectedAt;
     const originalPurchaseDate = proEntitlement.originalPurchaseDate;
+    const latestPurchaseDate = proEntitlement.latestPurchaseDate;
 
-    // Create a unique transaction ID from user + product + purchase date
-    const transactionId = `${userId}_${productId}_${originalPurchaseDate}`;
+    // Create a composite transaction ID using latest purchase date (changes on renewal)
+    // This ensures each renewal creates a unique identifier while maintaining history
+    const transactionId = `${userId}_${productId}_${latestPurchaseDate}`;
 
     console.log('[SubscriptionSync] Syncing subscription:', {
       transactionId,
@@ -49,50 +52,41 @@ export async function syncSubscriptionToSupabase(
       periodType,
       expirationDate,
       willRenew,
+      originalPurchaseDate,
+      latestPurchaseDate,
     });
 
-    // Determine subscription status
-    let status: string;
-    if (periodType === 'TRIAL') {
-      status = 'trialing';
-    } else if (willRenew) {
-      status = 'active';
-    } else if (unsubscribeDetectedAt) {
-      status = 'canceled';
-    } else {
-      status = 'active';
-    }
+    // Determine subscription status using shared mapper
+    const { status, canceledAt: mappedCanceledAt } = mapSubscriptionStatus({
+      periodType,
+      willRenew,
+      unsubscribeDetectedAt,
+    });
 
-    // Find Pro plan ID
-    const { data: plan, error: planError } = await supabase
-      .from('subscription_plans')
-      .select('id')
-      .eq('tier', 'pro')
-      .single();
+    // Get Pro plan ID (with caching to avoid repeated queries)
+    const planId = await getProPlanId();
 
-    if (planError || !plan) {
-      console.error('[SubscriptionSync] Failed to find Pro plan:', planError);
-      throw new Error('Pro subscription plan not found in database');
-    }
-
-    // Check if subscription already exists
+    // Check if subscription already exists for this user + product combination
+    // We use user_id + apple_product_id as the unique key (not transaction_id)
+    // This ensures one active subscription per product, with history preserved
     const { data: existingSubscription } = await supabase
       .from('subscriptions')
       .select('id')
       .eq('user_id', userId)
-      .eq('apple_original_transaction_id', transactionId)
+      .eq('apple_product_id', productId)
+      .eq('payment_platform', 'apple')
       .maybeSingle();
 
     // Prepare subscription data
     const subscriptionData = {
       user_id: userId,
-      plan_id: plan.id,
+      plan_id: planId,
       status,
       payment_platform: 'apple' as const,
       apple_original_transaction_id: transactionId,
       apple_product_id: productId,
       current_period_end: expirationDate,
-      canceled_at: unsubscribeDetectedAt || null,
+      canceled_at: mappedCanceledAt,
       trial_ends_at: periodType === 'TRIAL' ? expirationDate : null,
       updated_at: new Date().toISOString(),
     };

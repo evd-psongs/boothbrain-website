@@ -46,6 +46,7 @@ export function SupabaseAuthProvider({ children }: { children: React.ReactNode }
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const initializingRef = useRef(true);
+  const customerInfoListenerCleanup = useRef<(() => void) | null>(null);
 
   // Use extracted auth operations hook
   const { signUp, signIn, signOut, resetPassword, updatePassword, refreshSession } =
@@ -205,6 +206,11 @@ export function SupabaseAuthProvider({ children }: { children: React.ReactNode }
 
         // Logout RevenueCat on sign out
         if (Platform.OS === 'ios') {
+          // Clean up listener before logout
+          if (customerInfoListenerCleanup.current) {
+            customerInfoListenerCleanup.current();
+            customerInfoListenerCleanup.current = null;
+          }
           await logoutRevenueCat();
         }
       }
@@ -216,8 +222,14 @@ export function SupabaseAuthProvider({ children }: { children: React.ReactNode }
             try {
               await initializeRevenueCat(newSession.user.id);
 
-              // Setup listener for purchase updates
-              addCustomerInfoUpdateListener(async (customerInfo) => {
+              // Clean up old listener if exists (prevent memory leak)
+              if (customerInfoListenerCleanup.current) {
+                customerInfoListenerCleanup.current();
+                customerInfoListenerCleanup.current = null;
+              }
+
+              // Setup listener for purchase updates and store cleanup function
+              const cleanup = addCustomerInfoUpdateListener(async (customerInfo) => {
                 console.log('[Auth] RevenueCat customer info updated');
                 try {
                   await syncSubscriptionToSupabase(newSession.user.id, customerInfo);
@@ -229,6 +241,9 @@ export function SupabaseAuthProvider({ children }: { children: React.ReactNode }
                   console.error('[Auth] Failed to sync subscription after update:', syncErr);
                 }
               });
+
+              // Store cleanup function to prevent memory leaks
+              customerInfoListenerCleanup.current = cleanup;
 
               // Sync existing subscription if any
               const customerInfo = await getCustomerInfo();
@@ -252,6 +267,12 @@ export function SupabaseAuthProvider({ children }: { children: React.ReactNode }
 
     return () => {
       subscription.unsubscribe();
+
+      // Clean up RevenueCat listener on unmount
+      if (customerInfoListenerCleanup.current) {
+        customerInfoListenerCleanup.current();
+        customerInfoListenerCleanup.current = null;
+      }
     };
   }, []);
 

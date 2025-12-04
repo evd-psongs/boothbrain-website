@@ -20,3 +20,9 @@ export {
   syncSubscriptionToSupabase,
   hasAppleSubscription,
 } from './subscriptionSync';
+
+// Subscription status mapper
+export { mapSubscriptionStatus } from './subscriptionStatusMapper';
+
+// Plan cache
+export { getProPlanId, clearPlanCache } from './planCache';

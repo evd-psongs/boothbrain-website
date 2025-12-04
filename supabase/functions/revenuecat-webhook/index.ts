@@ -21,7 +21,7 @@
 import { serve } from 'https://deno.land/std@0.224.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.45.4?target=deno';
 
-const REVENUECAT_WEBHOOK_SECRET = Deno.env.get('REVENUECAT_WEBHOOK_SECRET');
+// const REVENUECAT_WEBHOOK_SECRET = Deno.env.get('REVENUECAT_WEBHOOK_SECRET'); // TODO: Implement signature verification
 const supabaseUrl = Deno.env.get('SUPABASE_URL');
 const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
 
@@ -78,11 +78,12 @@ serve(async (req) => {
       return json({ error: 'Missing app_user_id' }, 400);
     }
 
-    // Create unique transaction ID
-    const originalPurchaseDate = purchaseDateMs
+    // Create transaction ID for logging/tracking
+    // Note: We use user_id + product_id for lookups, not this transaction ID
+    const purchaseDate = purchaseDateMs
       ? new Date(parseInt(purchaseDateMs)).toISOString()
       : new Date().toISOString();
-    const transactionId = `${appUserId}_${productId}_${originalPurchaseDate}`;
+    const transactionId = `${appUserId}_${productId}_${purchaseDate}`;
 
     // Convert timestamps
     const expirationDate = expirationDateMs
@@ -90,6 +91,8 @@ serve(async (req) => {
       : null;
 
     // Determine subscription status based on event type
+    // Note: This logic is duplicated from src/lib/purchases/subscriptionStatusMapper.ts
+    // Edge functions can't import from src/, so we maintain sync manually
     let status: string;
     let canceledAt: string | null = null;
 
@@ -134,12 +137,15 @@ serve(async (req) => {
       return json({ error: 'Pro plan not found' }, 500);
     }
 
-    // Check if subscription already exists
+    // Check if subscription already exists for this user + product combination
+    // We use user_id + apple_product_id as the unique key (not transaction_id)
+    // This ensures one active subscription per product, with renewals updating the same record
     const { data: existingSubscription } = await supabase
       .from('subscriptions')
       .select('id')
       .eq('user_id', appUserId)
-      .eq('apple_original_transaction_id', transactionId)
+      .eq('apple_product_id', productId)
+      .eq('payment_platform', 'apple')
       .maybeSingle();
 
     // Prepare subscription data
