@@ -62,12 +62,8 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     ],
     '@react-native-firebase/app',
     '@react-native-firebase/crashlytics',
-    [
-      'react-native-purchases',
-      {
-        apiKey: process.env.REVENUECAT_PUBLIC_API_KEY_IOS,
-      },
-    ],
+    // Note: react-native-purchases doesn't have a config plugin
+    // It will be included via autolinking in native builds (EAS/Xcode)
   ],
   experiments: {
     typedRoutes: true,

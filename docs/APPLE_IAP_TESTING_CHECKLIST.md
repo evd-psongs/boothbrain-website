@@ -6,6 +6,22 @@ Quick reference guide for testing Apple In-App Purchases in sandbox.
 
 ---
 
+## ⚠️ Important: Expo Go NOT Supported
+
+**Apple IAP will NOT work in Expo Go!**
+
+- ❌ Expo Go doesn't include RevenueCat native modules
+- ❌ You'll see errors: `[RevenueCat] Missing API key, skipping initialization`
+- ✅ These errors are safe and won't crash your app
+- ✅ You can still test UI/UX in Expo Go
+
+**For actual IAP testing, you MUST use:**
+- TestFlight build (via EAS)
+- Development build (via `npx expo run:ios`)
+- Production App Store build
+
+---
+
 ## Prerequisites Checklist
 
 ### ✅ Before Testing
@@ -13,6 +29,7 @@ Quick reference guide for testing Apple In-App Purchases in sandbox.
 - [ ] **Phases 1-6 complete** (code implemented and committed)
 - [ ] **Physical iOS device** available (iPhone or iPad, iOS 15.1+)
 - [ ] **TestFlight build** created OR **Xcode development build** ready
+- [ ] **NOT using Expo Go** (won't work for IAP testing)
 - [ ] **Sandbox test accounts** created in App Store Connect
 - [ ] **Signed out** of real App Store account on device
 

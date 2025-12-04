@@ -1193,6 +1193,50 @@ import { isAppleIAPAvailable, isStripeAvailable } from '@/utils/platform';
 
 ## Testing Plan
 
+### ⚠️ IMPORTANT: Expo Go Not Supported
+
+**Apple IAP will NOT work in Expo Go!**
+
+RevenueCat requires native modules that aren't included in Expo Go. When running in Expo Go, you'll see:
+
+```
+[RevenueCat] Missing API key, skipping initialization
+[Auth] RevenueCat setup failed: There is no singleton instance
+```
+
+**These errors are expected and safe** - they won't crash your app. The code is designed to handle this gracefully.
+
+**What Works in Expo Go:**
+- ✅ UI/UX testing (Settings screen, modal layout, buttons)
+- ✅ Platform detection (iOS shows "View Plans", Android shows "Coming Soon")
+- ✅ All non-IAP features
+
+**What Doesn't Work in Expo Go:**
+- ❌ RevenueCat initialization
+- ❌ Fetching subscription offerings
+- ❌ Making purchases
+- ❌ Restore purchases
+- ❌ All IAP functionality
+
+**For IAP Testing, Use:**
+1. **EAS Build + TestFlight** (Recommended, no Mac needed)
+   ```bash
+   npm run ship:ios
+   npm run submit:ios
+   ```
+
+2. **Development Build** (Requires Mac with Xcode)
+   ```bash
+   npx expo run:ios --device
+   ```
+
+3. **EAS Preview Build** (Quick testing, no Mac needed)
+   ```bash
+   eas build --profile preview --platform ios
+   ```
+
+---
+
 ### Understanding Apple Sandbox Testing
 
 **What is Sandbox?**
@@ -1279,7 +1323,8 @@ Recommended accounts for different test scenarios:
 **Device Requirements:**
 - ✅ Physical iPhone or iPad (sandbox doesn't work in simulator)
 - ✅ iOS 15.1+ (per your deployment target)
-- ✅ Installed via Xcode or TestFlight (not App Store)
+- ✅ Installed via TestFlight, EAS build, or Xcode (NOT Expo Go)
+- ❌ Expo Go will NOT work - see warning above
 
 ---
 
