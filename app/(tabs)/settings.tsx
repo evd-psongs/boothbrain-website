@@ -24,6 +24,7 @@ import { ProfileSection } from '@/components/settings/ProfileSection';
 import { PasswordSection } from '@/components/settings/PasswordSection';
 import { TwoFactorSection } from '@/components/settings/TwoFactorSection';
 import { PaymentSettingsSection } from '@/components/settings/PaymentSettingsSection';
+import { SubscriptionModal } from '@/components/modals';
 import { useSubscriptionPlans } from '@/hooks/useSubscriptionPlans';
 import { startCheckoutSession, openBillingPortal } from '@/lib/billing';
 import { pauseSubscription, resumeSubscription } from '@/lib/subscriptions';
@@ -175,6 +176,7 @@ export default function SettingsScreen() {
   const [checkoutPlanTier, setCheckoutPlanTier] = useState<string | null>(null);
   const [openingBillingPortal, setOpeningBillingPortal] = useState(false);
   const [managingPause, setManagingPause] = useState(false);
+  const [showSubscriptionModal, setShowSubscriptionModal] = useState(false);
 
   useEffect(() => {
     let timeout: ReturnType<typeof setTimeout> | undefined;
@@ -789,6 +791,25 @@ export default function SettingsScreen() {
                 </Text>
               )}
             </View>
+          ) : isProSubscriptionAvailable() && currentPlanTier === 'free' ? (
+            <View style={styles.planList}>
+              <Text style={[styles.planSectionTitle, { color: theme.colors.textSecondary }]}>Upgrade to Pro</Text>
+              <View style={[styles.planCard, { borderColor: theme.colors.border, backgroundColor: theme.colors.surfaceMuted }]}>
+                <Text style={[styles.planTitle, { color: theme.colors.textPrimary }]}>BoothBrain Pro</Text>
+                <Text style={[styles.planDescription, { color: theme.colors.textSecondary }]}>
+                  Up to 500 items, vendor collaboration tools, and priority support
+                </Text>
+                <Text style={[styles.planPrice, { color: theme.colors.textPrimary }]}>Starting at $29.99/quarter</Text>
+                <View style={styles.planButtonSpacing}>
+                  <PrimaryButton
+                    title="View Plans"
+                    onPress={() => setShowSubscriptionModal(true)}
+                    backgroundColor={theme.colors.primary}
+                    textColor={theme.colors.surface}
+                  />
+                </View>
+              </View>
+            </View>
           ) : availablePlans.length ? (
             <View style={styles.planList}>
               <Text style={[styles.planSectionTitle, { color: theme.colors.textSecondary }]}>Upgrade to Pro</Text>
@@ -901,6 +922,20 @@ export default function SettingsScreen() {
         </View>
       </ScrollView>
 
+      {/* Subscription Modal (iOS only) */}
+      {isProSubscriptionAvailable() && (
+        <SubscriptionModal
+          visible={showSubscriptionModal}
+          onClose={() => setShowSubscriptionModal(false)}
+          onSuccess={async () => {
+            // Refresh user data after successful purchase
+            await refreshSession();
+            setFeedback({ type: 'success', message: 'Successfully subscribed to Pro!' });
+          }}
+          userId={user?.id || ''}
+          theme={theme}
+        />
+      )}
     </SafeAreaView>
   );
 }

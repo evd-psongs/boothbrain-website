@@ -9,6 +9,13 @@ import { getErrorMessage } from '@/types/database';
 import { withTimeout, withRetry, getTimeout } from '@/utils/asyncHelpers';
 import { buildAuthUser } from '@/lib/auth/authUserBuilder';
 import { useAuthOperations } from '@/hooks/useAuthOperations';
+import {
+  initializeRevenueCat,
+  logoutRevenueCat,
+  addCustomerInfoUpdateListener,
+  getCustomerInfo,
+} from '@/lib/purchases/revenuecatService';
+import { syncSubscriptionToSupabase } from '@/lib/purchases/subscriptionSync';
 
 type AuthContextValue = {
   user: AuthUser | null;
@@ -195,10 +202,43 @@ export function SupabaseAuthProvider({ children }: { children: React.ReactNode }
         } catch (e) {
           console.warn('Failed to remove session from storage', e);
         }
+
+        // Logout RevenueCat on sign out
+        if (Platform.OS === 'ios') {
+          await logoutRevenueCat();
+        }
       }
 
       if (newSession?.user) {
         try {
+          // Initialize RevenueCat for iOS users
+          if (Platform.OS === 'ios') {
+            try {
+              await initializeRevenueCat(newSession.user.id);
+
+              // Setup listener for purchase updates
+              addCustomerInfoUpdateListener(async (customerInfo) => {
+                console.log('[Auth] RevenueCat customer info updated');
+                try {
+                  await syncSubscriptionToSupabase(newSession.user.id, customerInfo);
+
+                  // Refresh user data to reflect new subscription
+                  const authUser = await buildAuthUser(newSession.user);
+                  setUser(authUser);
+                } catch (syncErr) {
+                  console.error('[Auth] Failed to sync subscription after update:', syncErr);
+                }
+              });
+
+              // Sync existing subscription if any
+              const customerInfo = await getCustomerInfo();
+              await syncSubscriptionToSupabase(newSession.user.id, customerInfo);
+            } catch (revenueCatErr) {
+              console.error('[Auth] RevenueCat setup failed:', revenueCatErr);
+              // Don't block login if RevenueCat fails
+            }
+          }
+
           const authUser = await buildAuthUser(newSession.user);
           setUser(authUser);
         } catch (err) {

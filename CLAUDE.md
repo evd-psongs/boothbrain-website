@@ -48,7 +48,7 @@ BoothBrain is an Expo React Native app for managing vendor booth inventory and s
 - All major files now under 1,300 lines (most under 200 lines)
 - Created clear separation of concerns with dedicated service layers
 
-## Current Session (2025-12-03 - Apple IAP Phase 1 Setup COMPLETE)
+## Current Session (2025-12-04 - Apple IAP Phases 1-6 COMPLETE!)
 - ✅ **Apple IAP Strategy Decision**
   - Analyzed App Store requirements (3.1.1 - subscriptions must use Apple IAP)
   - Analyzed Google Play requirements (similar to Apple - requires Google Play Billing)
@@ -100,22 +100,86 @@ BoothBrain is an Expo React Native app for managing vendor booth inventory and s
     - Existing Supabase keys preserved
     - File properly ignored in .gitignore
 
-- 📋 **Next Steps:**
-  - Phase 2: Install react-native-purchases package
-  - Phase 3: Create service layer (revenuecatService.ts, subscriptionSync.ts)
-  - Phase 4: Build UI (SubscriptionModal)
-  - Phase 5: Integrate with auth provider
-  - Phase 6: Set up webhooks
-  - Phase 7: Test in sandbox with physical device
+- ✅ **Phase 2: Package Installation & Setup COMPLETE!**
+  - Installed react-native-purchases package (8 packages)
+  - Updated app.config.ts with RevenueCat plugin
+  - Created database migration: `20251204_add_apple_iap_fields.sql`
+  - Added apple_original_transaction_id, apple_product_id, payment_platform columns
+  - Migration successfully applied to production database
 
-- 📝 **Files Created:**
-  - `docs/APPLE_IAP_IMPLEMENTATION_PLAN.md` (1800+ lines) - Complete iOS IAP implementation guide with sandbox testing
-  - `docs/ANDROID_PAYMENT_STRATEGY.md` (600+ lines) - Android monetization strategy
+- ✅ **Phase 3: Service Layer COMPLETE!**
+  - Created `src/lib/purchases/revenuecatService.ts` (180 lines)
+    - SDK initialization, purchase flow, restore purchases
+    - Customer info management, Pro entitlement checking
+  - Created `src/lib/purchases/subscriptionSync.ts` (170 lines)
+    - Syncs RevenueCat CustomerInfo to Supabase
+    - Maps statuses (TRIAL → trialing, etc.)
+    - Handles create and update operations
+  - Updated `src/lib/auth/subscriptionService.ts`
+    - Enhanced isSubscriptionActive() for Apple subscriptions
+    - Checks expiration dates instead of status field
+    - Backward compatible with Stripe
+
+- ✅ **Phase 4: UI Components COMPLETE!**
+  - Created `src/components/modals/SubscriptionModal.tsx` (410 lines)
+    - Package selection (monthly, quarterly, yearly)
+    - Pro features list with checkmarks
+    - Purchase flow with loading states
+    - Restore purchases functionality
+    - Error handling and success callbacks
+  - Updated Settings screen
+    - iOS users see "View Plans" button
+    - Android users see "Coming Soon" card
+    - Opens SubscriptionModal and refreshes on purchase
+
+- ✅ **Phase 5: Auth Provider Integration COMPLETE!**
+  - Updated `src/providers/SupabaseAuthProvider.tsx`
+    - Initializes RevenueCat SDK on sign in
+    - Adds customer info update listener
+    - Syncs existing subscription on app start
+    - Logs out RevenueCat on sign out
+  - Automatic subscription sync
+    - Purchase completes → Listener fires → Syncs to Supabase → Pro unlocked!
+    - Handles renewals, cancellations, expirations automatically
+
+- ✅ **Phase 6: Server-Side Webhook COMPLETE!**
+  - Created `supabase/functions/revenuecat-webhook/index.ts` (220 lines)
+    - Handles 5 event types: INITIAL_PURCHASE, RENEWAL, CANCELLATION, EXPIRATION, BILLING_ISSUE
+    - Maps events to subscription statuses
+    - Creates/updates subscriptions in Supabase
+    - Server-side backup for in-app listener
+  - Created `docs/REVENUECAT_WEBHOOK_DEPLOYMENT.md`
+    - Complete deployment guide
+    - RevenueCat configuration instructions
+    - Testing and troubleshooting steps
+
+- 📋 **Next Steps:**
+  - Phase 7: Test in sandbox with physical device
+  - Deploy webhook to production
+  - Configure RevenueCat webhook URL
+  - Test complete purchase flow
+
+- 📝 **Files Created (Phases 1-6):**
+  - `docs/APPLE_IAP_IMPLEMENTATION_PLAN.md` (1900+ lines) - Complete iOS IAP guide
+  - `docs/ANDROID_PAYMENT_STRATEGY.md` (600+ lines) - Android strategy
+  - `docs/REVENUECAT_WEBHOOK_DEPLOYMENT.md` (240+ lines) - Webhook deployment guide
   - `src/utils/platform.ts` (70 lines) - Platform detection utilities
+  - `src/lib/purchases/revenuecatService.ts` (180 lines) - RevenueCat SDK wrapper
+  - `src/lib/purchases/subscriptionSync.ts` (170 lines) - Subscription sync logic
+  - `src/lib/purchases/index.ts` (22 lines) - Centralized exports
+  - `src/components/modals/SubscriptionModal.tsx` (410 lines) - Subscription UI
+  - `supabase/functions/revenuecat-webhook/index.ts` (220 lines) - Webhook handler
+  - `supabase/migrations/20251204_add_apple_iap_fields.sql` (29 lines) - Database schema
   - `.env` - Environment variables with RevenueCat API key
 
-- 📝 **Files Modified:**
-  - `app/(tabs)/settings.tsx` - Added platform detection and "Coming Soon" card for Android
+- 📝 **Files Modified (Phases 1-6):**
+  - `app.config.ts` - Added RevenueCat plugin
+  - `app/(tabs)/settings.tsx` - Added subscription UI (iOS) and "Coming Soon" (Android)
+  - `src/providers/SupabaseAuthProvider.tsx` - RevenueCat initialization and listener
+  - `src/lib/auth/subscriptionService.ts` - Apple subscription support
+  - `src/types/database.ts` - Added Apple IAP fields to SubscriptionRow
+  - `src/types/auth.ts` - Added Apple IAP fields to Subscription type
+  - `src/components/modals/index.ts` - Exported SubscriptionModal
   - `.env.example` - Added RevenueCat configuration section
 
 ## Previous Session (2025-11-30 - Checkout UX & App Store Prep)
