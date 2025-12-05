@@ -13,13 +13,17 @@ import QRCode from 'react-native-qrcode-svg';
 import { Ionicons } from '@expo/vector-icons';
 
 import { PrimaryButton, SecondaryButton, SectionHeading, KeyboardDismissibleView, type FeedbackState } from '@/components/common';
+import { RecoveryCodesModal } from '@/components/modals';
 import type { Theme } from '@/providers/ThemeProvider';
+import { useSupabaseAuth } from '@/providers/SupabaseAuthProvider';
 import {
   isTwoFactorEnabled,
   enrollTwoFactor,
   verifyTwoFactorEnrollment,
   unenrollTwoFactor,
   getTwoFactorFactors,
+  generateRecoveryCodes,
+  getUnusedRecoveryCodeCount,
   type TwoFactorEnrollment,
   type TwoFactorFactor,
 } from '@/utils/twoFactor';
@@ -30,6 +34,7 @@ type TwoFactorSectionProps = {
 };
 
 export function TwoFactorSection({ theme, showFeedback }: TwoFactorSectionProps) {
+  const { user } = useSupabaseAuth();
   const [loading, setLoading] = useState(true);
   const [twoFactorEnabled, setTwoFactorEnabled] = useState(false);
   const [factors, setFactors] = useState<TwoFactorFactor[]>([]);
@@ -38,25 +43,33 @@ export function TwoFactorSection({ theme, showFeedback }: TwoFactorSectionProps)
   const [verificationCode, setVerificationCode] = useState('');
   const [enrolling, setEnrolling] = useState(false);
   const [verifying, setVerifying] = useState(false);
+  const [recoveryCodes, setRecoveryCodes] = useState<string[]>([]);
+  const [showRecoveryCodesModal, setShowRecoveryCodesModal] = useState(false);
+  const [recoveryCodeCount, setRecoveryCodeCount] = useState(0);
+  const [generatingCodes, setGeneratingCodes] = useState(false);
 
   const loadTwoFactorStatus = useCallback(async () => {
+    if (!user?.id) return;
+
     setLoading(true);
     try {
-      const [enabled, factorsResult] = await Promise.all([
+      const [enabled, factorsResult, codeCount] = await Promise.all([
         isTwoFactorEnabled(),
         getTwoFactorFactors(),
+        getUnusedRecoveryCodeCount(user.id),
       ]);
 
       setTwoFactorEnabled(enabled);
       if (factorsResult.success && factorsResult.factors) {
         setFactors(factorsResult.factors);
       }
+      setRecoveryCodeCount(codeCount);
     } catch (error) {
       console.error('Failed to load 2FA status:', error);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [user?.id]);
 
   useEffect(() => {
     void loadTwoFactorStatus();
@@ -89,7 +102,7 @@ export function TwoFactorSection({ theme, showFeedback }: TwoFactorSectionProps)
   }, [showFeedback]);
 
   const handleVerifyEnrollment = useCallback(async () => {
-    if (!enrollment || !verificationCode.trim()) {
+    if (!enrollment || !verificationCode.trim() || !user?.id) {
       showFeedback({
         type: 'error',
         message: 'Please enter the 6-digit code from your authenticator app',
@@ -109,15 +122,26 @@ export function TwoFactorSection({ theme, showFeedback }: TwoFactorSectionProps)
         return;
       }
 
-      showFeedback({
-        type: 'success',
-        message: '2FA enabled successfully!',
-      });
+      // Generate recovery codes
+      const codesResult = await generateRecoveryCodes(user.id);
 
-      // Close modal and reload status
+      if (!codesResult.success || !codesResult.codes) {
+        showFeedback({
+          type: 'error',
+          message: 'Failed to generate recovery codes',
+        });
+        return;
+      }
+
+      // Close enrollment modal
       setShowEnrollModal(false);
       setEnrollment(null);
       setVerificationCode('');
+
+      // Show recovery codes modal
+      setRecoveryCodes(codesResult.codes);
+      setShowRecoveryCodesModal(true);
+
       await loadTwoFactorStatus();
     } catch (error) {
       console.error('Failed to verify 2FA:', error);
@@ -128,7 +152,7 @@ export function TwoFactorSection({ theme, showFeedback }: TwoFactorSectionProps)
     } finally {
       setVerifying(false);
     }
-  }, [enrollment, verificationCode, showFeedback, loadTwoFactorStatus]);
+  }, [enrollment, verificationCode, user?.id, showFeedback, loadTwoFactorStatus]);
 
   const handleDisable = useCallback(
     async (factorId: string) => {
@@ -181,6 +205,60 @@ export function TwoFactorSection({ theme, showFeedback }: TwoFactorSectionProps)
     setEnrollment(null);
     setVerificationCode('');
   }, []);
+
+  const handleRegenerateCodes = useCallback(async () => {
+    if (!user?.id) return;
+
+    Alert.alert(
+      'Regenerate Recovery Codes?',
+      'This will invalidate all your existing recovery codes and generate new ones. Make sure to save the new codes.',
+      [
+        {
+          text: 'Cancel',
+          style: 'cancel',
+        },
+        {
+          text: 'Regenerate',
+          style: 'destructive',
+          onPress: async () => {
+            setGeneratingCodes(true);
+            try {
+              const result = await generateRecoveryCodes(user.id);
+
+              if (!result.success || !result.codes) {
+                showFeedback({
+                  type: 'error',
+                  message: 'Failed to generate recovery codes',
+                });
+                return;
+              }
+
+              setRecoveryCodes(result.codes);
+              setShowRecoveryCodesModal(true);
+              await loadTwoFactorStatus();
+            } catch (error) {
+              console.error('Failed to regenerate recovery codes:', error);
+              showFeedback({
+                type: 'error',
+                message: 'Failed to regenerate recovery codes',
+              });
+            } finally {
+              setGeneratingCodes(false);
+            }
+          },
+        },
+      ]
+    );
+  }, [user?.id, showFeedback, loadTwoFactorStatus]);
+
+  const handleRecoveryCodesConfirm = useCallback(() => {
+    setShowRecoveryCodesModal(false);
+    setRecoveryCodes([]);
+    showFeedback({
+      type: 'success',
+      message: '2FA enabled successfully! Recovery codes saved.',
+    });
+  }, [showFeedback]);
 
   if (loading) {
     return (
@@ -276,6 +354,34 @@ export function TwoFactorSection({ theme, showFeedback }: TwoFactorSectionProps)
                 </Pressable>
               </View>
             ))}
+          </View>
+        )}
+
+        {/* Recovery Codes Section */}
+        {twoFactorEnabled && (
+          <View style={[styles.recoveryCodesSection, { backgroundColor: theme.colors.surfaceMuted, borderColor: theme.colors.border }]}>
+            <View style={styles.recoveryCodesHeader}>
+              <Ionicons name="key" size={20} color={theme.colors.primary} />
+              <Text style={[styles.recoveryCodesTitle, { color: theme.colors.textPrimary }]}>
+                Recovery Codes
+              </Text>
+            </View>
+            <Text style={[styles.recoveryCodesText, { color: theme.colors.textSecondary }]}>
+              {recoveryCodeCount > 0
+                ? `You have ${recoveryCodeCount} unused recovery code${recoveryCodeCount !== 1 ? 's' : ''}.`
+                : 'No recovery codes available.'}
+              {' '}
+              Recovery codes can be used to access your account if you lose your authenticator app.
+            </Text>
+            <SecondaryButton
+              title={generatingCodes ? 'Generating...' : 'Regenerate Recovery Codes'}
+              onPress={handleRegenerateCodes}
+              disabled={generatingCodes}
+              loading={generatingCodes}
+              backgroundColor={theme.colors.surface}
+              textColor={theme.colors.textPrimary}
+              borderColor={theme.colors.border}
+            />
           </View>
         )}
 
@@ -418,6 +524,18 @@ export function TwoFactorSection({ theme, showFeedback }: TwoFactorSectionProps)
           </KeyboardDismissibleView>
         </View>
       </Modal>
+
+      {/* Recovery Codes Modal */}
+      <RecoveryCodesModal
+        visible={showRecoveryCodesModal}
+        codes={recoveryCodes}
+        onClose={() => {
+          setShowRecoveryCodesModal(false);
+          setRecoveryCodes([]);
+        }}
+        onConfirm={handleRecoveryCodesConfirm}
+        theme={theme}
+      />
     </>
   );
 }
@@ -587,5 +705,24 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: 12,
     marginTop: 8,
+  },
+  recoveryCodesSection: {
+    borderRadius: 12,
+    borderWidth: 1,
+    padding: 16,
+    gap: 12,
+  },
+  recoveryCodesHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  recoveryCodesTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  recoveryCodesText: {
+    fontSize: 14,
+    lineHeight: 20,
   },
 });

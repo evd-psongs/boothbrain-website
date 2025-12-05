@@ -9,6 +9,7 @@ import {
   Image,
   Switch,
   Modal,
+  Alert,
 } from 'react-native';
 import { Link, useRouter } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -23,7 +24,9 @@ import {
   getTwoFactorFactors,
   challengeTwoFactor,
   verifyTwoFactorCode,
+  verifyRecoveryCode,
 } from '@/utils/twoFactor';
+import { supabase } from '@/lib/supabase';
 
 const logoImage = require('../../assets/BBtrans.png') as number;
 
@@ -44,6 +47,8 @@ export default function SignInScreen() {
   const [verifying2FA, setVerifying2FA] = useState(false);
   const [factorId, setFactorId] = useState<string | null>(null);
   const [challengeId, setChallengeId] = useState<string | null>(null);
+  const [useRecoveryCode, setUseRecoveryCode] = useState(false);
+  const [userId, setUserId] = useState<string | null>(null);
 
   const displayError = localError || error;
 
@@ -85,6 +90,10 @@ export default function SignInScreen() {
 
       if (error) throw error;
 
+      // Get current session to extract user ID
+      const { data: sessionData } = await supabase.auth.getSession();
+      const currentUserId = sessionData?.session?.user?.id;
+
       // Check if user needs 2FA
       const assurance = await getAssuranceLevel();
 
@@ -102,6 +111,7 @@ export default function SignInScreen() {
             if (challengeResult.success && challengeResult.challengeId) {
               setFactorId(verifiedFactor.id);
               setChallengeId(challengeResult.challengeId);
+              setUserId(currentUserId || null);
               setShow2FAModal(true);
               return; // Don't navigate yet, wait for 2FA verification
             }
@@ -117,8 +127,10 @@ export default function SignInScreen() {
   }, [email, password, rememberMe, signIn, router, clearError]);
 
   const handleVerify2FA = useCallback(async () => {
-    if (!factorId || !challengeId || !twoFactorCode.trim()) {
-      setLocalError('Please enter your 6-digit code');
+    const code = twoFactorCode.trim();
+
+    if (!code) {
+      setLocalError(useRecoveryCode ? 'Please enter your recovery code' : 'Please enter your 6-digit code');
       return;
     }
 
@@ -127,31 +139,69 @@ export default function SignInScreen() {
     clearError();
 
     try {
-      const result = await verifyTwoFactorCode(factorId, challengeId, twoFactorCode.trim());
+      if (useRecoveryCode) {
+        // Using recovery code
+        if (!userId) {
+          setLocalError('User ID not found. Please try signing in again.');
+          setVerifying2FA(false);
+          return;
+        }
 
-      if (!result.success) {
-        setLocalError(result.error || 'Invalid code. Please try again.');
-        setVerifying2FA(false);
-        return;
+        const result = await verifyRecoveryCode(userId, code);
+
+        if (!result.success) {
+          setLocalError(result.error || 'Invalid recovery code.');
+          setVerifying2FA(false);
+          return;
+        }
+
+        // Recovery code verified successfully
+        setShow2FAModal(false);
+        setTwoFactorCode('');
+        setUseRecoveryCode(false);
+
+        // Show alert about recovery code usage
+        Alert.alert(
+          'Recovery Code Used',
+          'You have successfully signed in using a recovery code. This code has been marked as used and cannot be reused. We recommend regenerating your recovery codes in Settings.',
+          [{ text: 'OK', onPress: () => router.replace('/(tabs)/home') }]
+        );
+      } else {
+        // Using TOTP code
+        if (!factorId || !challengeId) {
+          setLocalError('2FA challenge not initialized. Please try signing in again.');
+          setVerifying2FA(false);
+          return;
+        }
+
+        const result = await verifyTwoFactorCode(factorId, challengeId, code);
+
+        if (!result.success) {
+          setLocalError(result.error || 'Invalid code. Please try again.');
+          setVerifying2FA(false);
+          return;
+        }
+
+        // 2FA verified successfully, proceed to home
+        setShow2FAModal(false);
+        setTwoFactorCode('');
+        router.replace('/(tabs)/home');
       }
-
-      // 2FA verified successfully, proceed to home
-      setShow2FAModal(false);
-      setTwoFactorCode('');
-      router.replace('/(tabs)/home');
     } catch (err) {
       console.error('2FA verification failed', err);
       setLocalError('Verification failed. Please try again.');
     } finally {
       setVerifying2FA(false);
     }
-  }, [factorId, challengeId, twoFactorCode, router, clearError]);
+  }, [factorId, challengeId, twoFactorCode, useRecoveryCode, userId, router, clearError]);
 
   const handleCancel2FA = useCallback(() => {
     setShow2FAModal(false);
     setTwoFactorCode('');
     setFactorId(null);
     setChallengeId(null);
+    setUserId(null);
+    setUseRecoveryCode(false);
     setLocalError(null);
   }, []);
 
@@ -291,16 +341,19 @@ export default function SignInScreen() {
               </View>
 
               <Text style={[styles.twoFactorDescription, { color: theme.colors.textSecondary }]}>
-                Enter the 6-digit code from your authenticator app to complete sign in.
+                {useRecoveryCode
+                  ? 'Enter one of your recovery codes to sign in.'
+                  : 'Enter the 6-digit code from your authenticator app to complete sign in.'}
               </Text>
 
               <TextInput
                 value={twoFactorCode}
                 onChangeText={setTwoFactorCode}
-                placeholder="000000"
+                placeholder={useRecoveryCode ? 'XXXX-XXXX' : '000000'}
                 placeholderTextColor={theme.colors.textMuted}
-                keyboardType="number-pad"
-                maxLength={6}
+                keyboardType={useRecoveryCode ? 'default' : 'number-pad'}
+                maxLength={useRecoveryCode ? 9 : 6}
+                autoCapitalize={useRecoveryCode ? 'characters' : 'none'}
                 autoFocus
                 returnKeyType="done"
                 onSubmitEditing={handleVerify2FA}
@@ -323,16 +376,26 @@ export default function SignInScreen() {
                 </View>
               )}
 
+              <Pressable onPress={() => {
+                setUseRecoveryCode(!useRecoveryCode);
+                setTwoFactorCode('');
+                setLocalError(null);
+              }}>
+                <Text style={[styles.recoveryCodeLink, { color: theme.colors.primary }]}>
+                  {useRecoveryCode ? 'Use authenticator app code' : 'Lost access? Use recovery code'}
+                </Text>
+              </Pressable>
+
               <Pressable
                 style={[
                   styles.twoFactorButton,
                   {
                     backgroundColor: theme.colors.primary,
-                    opacity: verifying2FA || twoFactorCode.length !== 6 ? 0.5 : 1,
+                    opacity: verifying2FA || twoFactorCode.trim().length === 0 ? 0.5 : 1,
                   },
                 ]}
                 onPress={handleVerify2FA}
-                disabled={verifying2FA || twoFactorCode.length !== 6}
+                disabled={verifying2FA || twoFactorCode.trim().length === 0}
               >
                 {verifying2FA ? (
                   <ActivityIndicator color={theme.colors.surface} />
@@ -547,5 +610,11 @@ const styles = StyleSheet.create({
   cancelButtonText: {
     fontSize: 16,
     fontWeight: '600',
+  },
+  recoveryCodeLink: {
+    fontSize: 14,
+    fontWeight: '600',
+    textAlign: 'center',
+    paddingVertical: 8,
   },
 });
