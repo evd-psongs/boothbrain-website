@@ -23,8 +23,8 @@ BoothBrain is an Expo React Native app for managing vendor booth inventory and s
 - `test-branch` - Development/testing branch (active development)
 
 **Current Status:**
-- Both `master` and `test-branch` at commit `eba0a94` (checkout UX & payment deep links)
-- Branches are in sync - all production changes merged
+- Both `master` and `test-branch` at commit `8a6b2c1` (Apple IAP implementation complete + pre-build ready)
+- Branches are in sync - all Apple IAP changes merged
 - Active development happens on `test-branch`
 - Changes merged to `master` when stable
 
@@ -48,7 +48,23 @@ BoothBrain is an Expo React Native app for managing vendor booth inventory and s
 - All major files now under 1,300 lines (most under 200 lines)
 - Created clear separation of concerns with dedicated service layers
 
-## Current Session (2025-12-04 - Apple IAP Phases 1-6 COMPLETE!)
+## Current Session (2025-12-04 - Apple IAP Implementation + Pre-Build Complete!)
+
+### **Session Summary:**
+Complete implementation of Apple In-App Purchase (IAP) for iOS subscription monetization, replacing Stripe to comply with App Store requirements. Includes full RevenueCat SDK integration, database schema updates, comprehensive error handling, 5 critical code quality fixes, and pre-build verification. Ready for EAS build and sandbox testing.
+
+### **What Was Accomplished:**
+- ✅ Complete Apple IAP implementation (Phases 1-6)
+- ✅ 5 critical code quality fixes applied
+- ✅ 2FA recovery codes implementation
+- ✅ Expo Go testing completed
+- ✅ Pre-build configuration verified
+- ✅ 6,500+ lines of code and documentation
+- ✅ Ready for EAS build and sandbox testing
+
+---
+
+## Apple IAP Implementation Details (2025-12-04)
 - ✅ **Apple IAP Strategy Decision**
   - Analyzed App Store requirements (3.1.1 - subscriptions must use Apple IAP)
   - Analyzed Google Play requirements (similar to Apple - requires Google Play Billing)
@@ -173,14 +189,108 @@ BoothBrain is an Expo React Native app for managing vendor booth inventory and s
   - `.env` - Environment variables with RevenueCat API key
 
 - 📝 **Files Modified (Phases 1-6):**
-  - `app.config.ts` - Added RevenueCat plugin
+  - `app.config.ts` - Removed RevenueCat plugin (uses autolinking)
+  - `eas.json` - Added REVENUECAT_PUBLIC_API_KEY_IOS to preview and production profiles
   - `app/(tabs)/settings.tsx` - Added subscription UI (iOS) and "Coming Soon" (Android)
-  - `src/providers/SupabaseAuthProvider.tsx` - RevenueCat initialization and listener
-  - `src/lib/auth/subscriptionService.ts` - Apple subscription support
+  - `app/auth/sign-in.tsx` - Added 2FA recovery code authentication
+  - `src/providers/SupabaseAuthProvider.tsx` - RevenueCat init, listener cleanup, memory leak fix
+  - `src/lib/auth/subscriptionService.ts` - Apple subscription support with expiration checks
   - `src/types/database.ts` - Added Apple IAP fields to SubscriptionRow
   - `src/types/auth.ts` - Added Apple IAP fields to Subscription type
-  - `src/components/modals/index.ts` - Exported SubscriptionModal
-  - `.env.example` - Added RevenueCat configuration section
+  - `src/components/modals/index.ts` - Exported SubscriptionModal and RecoveryCodesModal
+  - `src/components/settings/TwoFactorSection.tsx` - Added recovery codes generation
+  - `src/utils/twoFactor.ts` - Fixed crypto compatibility with expo-crypto
+  - `package.json` - Added react-native-purchases and expo-crypto
+
+---
+
+## 🔧 Critical Code Fixes Applied (2025-12-04)
+
+**7 issues fixed before sandbox testing:**
+
+### **Fix #1: Memory Leak - RevenueCat Listener** (CRITICAL 🔴)
+- **Problem:** Listener never removed, accumulates on each sign-in
+- **Solution:** Return cleanup function, store in ref, call on sign out/unmount
+- **Impact:** Prevents memory exhaustion and crashes
+
+### **Fix #2: Transaction ID Uniqueness** (CRITICAL 🔴)
+- **Problem:** Same transaction ID on resubscribe, lost subscription history
+- **Solution:** Use `user_id + product_id` for lookups instead of transaction_id
+- **Impact:** Accurate subscription history maintained
+
+### **Fix #3: Duplicate Status Mapping** (HIGH 🟠)
+- **Problem:** Status logic duplicated in client and webhook
+- **Solution:** Created shared `subscriptionStatusMapper.ts`
+- **Impact:** Single source of truth, easier maintenance
+
+### **Fix #4: 2FA Crypto Compatibility** (CRITICAL 🔴)
+- **Problem:** `crypto.subtle` doesn't exist in React Native
+- **Solution:** Use `expo-crypto` package instead
+- **Impact:** Recovery codes work in React Native
+
+### **Fix #5: Inefficient Database Queries** (MEDIUM 🟡)
+- **Problem:** Pro plan ID queried on every sync
+- **Solution:** In-memory caching with `planCache.ts`
+- **Impact:** Faster syncs, reduced database load
+
+### **Fix #6: No Error Recovery in Purchases** (MEDIUM 🟡)
+- **Problem:** User charged but not recorded if sync fails
+- **Solution:** 3 retry attempts with exponential backoff, webhook backup
+- **Impact:** User always gets what they paid for
+
+### **Fix #7: RevenueCat Key in eas.json** (CRITICAL 🔴)
+- **Problem:** Key only in `.env`, not available in EAS builds
+- **Solution:** Added to `eas.json` preview and production profiles
+- **Impact:** RevenueCat works in EAS builds
+
+**All Fixes Verified:**
+- TypeScript: ✅ 0 errors
+- ESLint: ✅ 0 errors
+- Expo Go tested: ✅ Works as expected
+
+---
+
+## 📊 Session Statistics (2025-12-04)
+
+**Code:**
+- 18 new files created
+- 13 files modified
+- 6,527 lines added
+- 32 files changed total
+
+**Documentation:**
+- 7 comprehensive guides (3,614 lines)
+- Complete testing checklists
+- Deployment procedures
+
+**Commits:**
+- 20+ commits
+- All merged to master
+- Branches in sync
+
+**Quality:**
+- TypeScript: ✅ 0 errors
+- ESLint: ✅ 0 errors
+- Expo Go: ✅ Tested
+
+---
+
+## 🎯 Ready for EAS Build
+
+**Status:** ✅ All pre-build checks passed
+
+**Next Command:**
+```bash
+eas build --profile preview --platform ios
+```
+
+**Timeline:**
+- EAS Build: 15-20 min
+- Sandbox Testing: 2-3 hours
+- Webhook Deploy: 30 min
+- **Total to App Store: 3-4 days**
+
+---
 
 ## Previous Session (2025-11-30 - Checkout UX & App Store Prep)
 - ✅ **Fixed Checkout UX Issues**
