@@ -26,7 +26,7 @@ import { TwoFactorSection } from '@/components/settings/TwoFactorSection';
 import { PaymentSettingsSection } from '@/components/settings/PaymentSettingsSection';
 import { SubscriptionModal } from '@/components/modals';
 import { useSubscriptionPlans } from '@/hooks/useSubscriptionPlans';
-import { startCheckoutSession, openBillingPortal } from '@/lib/billing';
+import { startCheckoutSession } from '@/lib/billing';
 import { pauseSubscription, resumeSubscription } from '@/lib/subscriptions';
 import { supabase } from '@/lib/supabase';
 import { useSession, SESSION_CODE_LENGTH } from '@/providers/SessionProvider';
@@ -38,6 +38,7 @@ import { getErrorMessage } from '@/types/database';
 import { enforceFreePlanLimits, FREE_PLAN_ITEM_LIMIT } from '@/lib/freePlanLimits';
 import { PAUSE_ALREADY_USED_MESSAGE } from '@/utils/pauseErrors';
 import { isProSubscriptionAvailable, getProUnavailableMessage, isAndroid } from '@/utils/platform';
+import { testCrash } from '@/lib/services/firebase';
 
 
 type PendingJoinRequest = {
@@ -174,7 +175,6 @@ export default function SettingsScreen() {
   const [showJoinForm, setShowJoinForm] = useState(false);
   const [launchingCheckout, setLaunchingCheckout] = useState(false);
   const [checkoutPlanTier, setCheckoutPlanTier] = useState<string | null>(null);
-  const [openingBillingPortal, setOpeningBillingPortal] = useState(false);
   const [managingPause, setManagingPause] = useState(false);
   const [showSubscriptionModal, setShowSubscriptionModal] = useState(false);
 
@@ -222,7 +222,8 @@ export default function SettingsScreen() {
     }
     return rows;
   }, [planName, priceDescription, subscription?.currentPeriodEnd, trialDaysRemaining]);
-  const canManagePause = Boolean(subscription?.id && currentPlanTier !== 'free');
+  // Pause only available for Stripe subscriptions (Apple IAP managed via iOS Settings)
+  const canManagePause = Boolean(subscription?.id && currentPlanTier !== 'free' && subscription?.paymentPlatform === 'stripe');
   const pauseRestrictionMessage = useMemo(() => {
     if (!pauseAllowanceUsed || isSubscriptionPaused) return null;
     if (subscription?.currentPeriodEnd) {
@@ -234,7 +235,6 @@ export default function SettingsScreen() {
     () => normalizedPlans.filter((plan) => plan.tier !== currentPlanTier),
     [normalizedPlans, currentPlanTier],
   );
-  const canOpenBillingPortal = Boolean(subscription?.id);
   const showPlansSpinner = (plansLoading || plansFetching) && !(plansData && plansData.length);
   const showFreeLimitNotice = currentPlanTier === 'free' || isSubscriptionPaused;
 
@@ -473,20 +473,6 @@ export default function SettingsScreen() {
     [user?.id, showFeedback],
   );
 
-  const handleOpenBillingPortal = useCallback(async () => {
-    if (!user?.id || !canOpenBillingPortal) return;
-    setOpeningBillingPortal(true);
-    try {
-      await openBillingPortal({ userId: user.id });
-      showFeedback({ type: 'success', message: 'Billing portal opened in your browser.' });
-    } catch (error: any) {
-      console.error('Failed to open billing portal', error);
-      showFeedback({ type: 'error', message: error?.message ?? 'Failed to open billing portal.' });
-    } finally {
-      setOpeningBillingPortal(false);
-    }
-  }, [user?.id, canOpenBillingPortal, showFeedback]);
-
   const applyPauseState = useCallback(
     async (mode: 'pause' | 'resume') => {
       if (!user?.id || !canManagePause) return;
@@ -621,6 +607,24 @@ export default function SettingsScreen() {
     ]);
   }, [signOut, router]);
 
+  const handleTestCrash = useCallback(() => {
+    Alert.alert(
+      'Test Crashlytics',
+      'This will force a crash to test Firebase Crashlytics reporting. The app will close immediately.\n\nOnly use this in EAS builds (not Expo Go).',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Crash App',
+          style: 'destructive',
+          onPress: () => {
+            console.log('🔴 Triggering test crash for Crashlytics...');
+            testCrash();
+          },
+        },
+      ],
+    );
+  }, []);
+
   if (!user) {
     return (
       <SafeAreaView style={[styles.safeArea, { backgroundColor: theme.colors.background }] }>
@@ -724,28 +728,23 @@ export default function SettingsScreen() {
             </View>
           ))}
 
-          <View style={styles.inlineActions}>
-            <SecondaryButton
-              style={styles.inlineActionButton}
-              title="Billing Portal"
-              onPress={handleOpenBillingPortal}
-              disabled={!canOpenBillingPortal || openingBillingPortal}
-              loading={openingBillingPortal}
-              backgroundColor="transparent"
-              borderColor={theme.colors.primary}
-              textColor={theme.colors.primary}
-            />
-            <SecondaryButton
-              style={[styles.inlineActionButton, styles.inlineActionButtonLast]}
-              title="Refresh"
-              onPress={handleRefreshSubscription}
-              disabled={refreshingAccount}
-              loading={refreshingAccount}
-              backgroundColor={theme.colors.surfaceMuted}
-              borderColor={theme.colors.border}
-              textColor={theme.colors.textPrimary}
-            />
-          </View>
+          <SecondaryButton
+            title="Refresh"
+            onPress={handleRefreshSubscription}
+            disabled={refreshingAccount}
+            loading={refreshingAccount}
+            backgroundColor={theme.colors.surfaceMuted}
+            borderColor={theme.colors.border}
+            textColor={theme.colors.textPrimary}
+          />
+
+          {subscription?.paymentPlatform === 'apple' ? (
+            <View style={[styles.notice, { backgroundColor: 'rgba(99, 102, 241, 0.08)', borderColor: theme.colors.primary }]}>
+              <Text style={[styles.noticeText, { color: theme.colors.textPrimary }]}>
+                To manage your subscription, go to iOS Settings → [Your Name] → Subscriptions
+              </Text>
+            </View>
+          ) : null}
 
           {canManagePause ? (
             <View
@@ -904,6 +903,26 @@ export default function SettingsScreen() {
             textColor={theme.colors.textPrimary}
           />
         </View>
+
+        {/* Developer Tools */}
+        {__DEV__ && (
+          <View style={[styles.card, { backgroundColor: theme.colors.surface, borderColor: theme.colors.warning }] }>
+            <SectionHeading
+              title="Developer Tools"
+              subtitle="Testing tools for development builds"
+              titleColor={theme.colors.warning}
+              subtitleColor={theme.colors.textSecondary}
+            />
+
+            <SecondaryButton
+              title="Test Crashlytics"
+              onPress={handleTestCrash}
+              backgroundColor="transparent"
+              borderColor={theme.colors.warning}
+              textColor={theme.colors.warning}
+            />
+          </View>
+        )}
 
         <View style={[styles.card, { backgroundColor: theme.colors.surface, borderColor: theme.colors.error }] }>
           <SectionHeading
