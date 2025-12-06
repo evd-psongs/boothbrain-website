@@ -99,6 +99,15 @@ export function SupabaseAuthProvider({ children }: { children: React.ReactNode }
                     setSession(refreshData.session);
                     await AsyncStorage.setItem('sb-auth-token', JSON.stringify(refreshData.session));
 
+                    // Initialize RevenueCat for iOS
+                    if (Platform.OS === 'ios') {
+                      try {
+                        await initializeRevenueCat(refreshData.session.user.id);
+                      } catch (error) {
+                        console.error('RevenueCat: Initialization failed on cache restore', error);
+                      }
+                    }
+
                     // We have a valid session now, so we can proceed to load the user
                     const authUser = await buildAuthUser(refreshData.session.user);
                     setUser(authUser);
@@ -114,6 +123,15 @@ export function SupabaseAuthProvider({ children }: { children: React.ReactNode }
               // Set cached session immediately for fast UI response
               setSession(cachedSession);
               setLoading(false);
+
+              // Initialize RevenueCat for iOS (with cached session)
+              if (Platform.OS === 'ios') {
+                try {
+                  await initializeRevenueCat(cachedSession.user.id);
+                } catch (error) {
+                  console.error('RevenueCat: Initialization failed on cache restore', error);
+                }
+              }
 
               // Try to refresh the session in background (Silent Token Refresh with timeout)
               try {
