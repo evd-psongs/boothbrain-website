@@ -75,6 +75,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     supabaseUrl: process.env.EXPO_PUBLIC_SUPABASE_URL,
     supabaseAnonKey: process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY,
     environment: process.env.EXPO_PUBLIC_ENVIRONMENT ?? 'production',
+    enableDevTools: process.env.EXPO_PUBLIC_ENABLE_DEV_TOOLS ?? 'false',
     eas: {
       projectId: 'f0113217-0f08-470d-aa1b-3f8870ef9198',
     },

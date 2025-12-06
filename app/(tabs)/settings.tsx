@@ -39,6 +39,7 @@ import { enforceFreePlanLimits, FREE_PLAN_ITEM_LIMIT } from '@/lib/freePlanLimit
 import { PAUSE_ALREADY_USED_MESSAGE } from '@/utils/pauseErrors';
 import { isProSubscriptionAvailable, getProUnavailableMessage, isAndroid } from '@/utils/platform';
 import { testCrash } from '@/lib/services/firebase';
+import Constants from 'expo-constants';
 
 
 type PendingJoinRequest = {
@@ -905,11 +906,11 @@ export default function SettingsScreen() {
         </View>
 
         {/* Developer Tools */}
-        {__DEV__ && (
+        {(__DEV__ || Constants.expoConfig?.extra?.enableDevTools === 'true') && (
           <View style={[styles.card, { backgroundColor: theme.colors.surface, borderColor: theme.colors.warning }] }>
             <SectionHeading
               title="Developer Tools"
-              subtitle="Testing tools for development builds"
+              subtitle="Testing tools for development and preview builds"
               titleColor={theme.colors.warning}
               subtitleColor={theme.colors.textSecondary}
             />
