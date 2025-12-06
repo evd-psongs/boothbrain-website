@@ -102,14 +102,14 @@ npm start -- --clear
 - ✅ Testing new features
 - ✅ Testing Crashlytics (has test button)
 - ✅ Testing Apple IAP in sandbox
-- ✅ Sharing with internal testers via TestFlight
+- ✅ Sharing with beta testers via TestFlight
 - ✅ Want to verify everything works before final release
 
 **Includes:**
 - ✅ Developer Tools section (Crashlytics test button)
 - ✅ All production features (IAP, Firebase, etc.)
 - ✅ Can submit to TestFlight
-- ❌ Cannot submit to App Store (internal distribution only)
+- ✅ Can submit to App Store (but keep for testing only!)
 
 ### Use **Production** (`npm run ship:ios`) When:
 
@@ -169,9 +169,9 @@ npm run submit:ios
 
 | Feature | Preview | Production |
 |---------|---------|------------|
-| **Distribution** | Internal | App Store |
+| **Distribution** | App Store | App Store |
 | **TestFlight** | ✅ YES | ✅ YES |
-| **App Store** | ❌ NO | ✅ YES |
+| **App Store** | ✅ YES* | ✅ YES |
 | **Dev Tools** | ✅ YES | ❌ NO |
 | **Crashlytics Test Button** | ✅ YES | ❌ NO |
 | **Firebase Crashlytics** | ✅ YES | ✅ YES |
@@ -179,6 +179,8 @@ npm run submit:ios
 | **Sandbox IAP** | ✅ YES | ✅ YES |
 | **Auto Build Number** | ❌ NO | ✅ YES |
 | **Use Case** | Testing | Release |
+
+\* Preview CAN go to App Store but should be used for beta testing only!
 
 ---
 

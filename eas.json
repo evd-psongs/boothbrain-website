@@ -9,7 +9,7 @@
       "distribution": "internal"
     },
     "preview": {
-      "distribution": "internal",
+      "distribution": "store",
       "env": {
         "EAS_POD_INSTALL_ARGS": "--repo-update",
         "EXPO_PUBLIC_SUPABASE_URL": "https://vosnpecghhfinofsqcpv.supabase.co",
