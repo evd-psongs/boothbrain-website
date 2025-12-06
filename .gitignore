@@ -17,3 +17,5 @@ expo-env.d.ts
 # @end expo-cli
 pics/
 misc/
+.gemini_security/
+GEMINI.md

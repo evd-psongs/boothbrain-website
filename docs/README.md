@@ -1,6 +1,11 @@
 # BoothBrain Documentation
 
+**Last Updated:** 2025-12-06
+**Status:** 📘 Reference - Documentation overview
+
 This folder contains all the documentation needed for App Store submission and launch.
+
+> **📚 Looking for something?** Check [INDEX.md](./INDEX.md) for the complete documentation catalog with search and status indicators!
 
 ## 📄 Files Overview
 

@@ -1,5 +1,9 @@
 # Expo Development & Build Guide
 
+**Last Updated:** 2025-12-06
+**Status:** 🟢 Active - Detailed reference
+**Purpose:** Comprehensive EAS build instructions and troubleshooting
+
 Quick reference for running development builds and creating production builds.
 
 ---

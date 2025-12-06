@@ -1,5 +1,9 @@
 # RevenueCat Webhook Deployment Guide
 
+**Last Updated:** 2025-12-06
+**Status:** 🟢 Active - Ready to deploy
+**Purpose:** Deploy and configure RevenueCat webhook for subscription sync
+
 This guide explains how to deploy and configure the RevenueCat webhook for server-side subscription sync.
 
 ## What is the Webhook For?

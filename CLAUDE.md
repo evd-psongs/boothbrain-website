@@ -3,6 +3,21 @@
 ## Project Overview
 BoothBrain is an Expo React Native app for managing vendor booth inventory and sales.
 
+## Documentation 📚
+**Quick Start:** See `/docs/INDEX.md` for complete documentation catalog
+
+**Key Documents:**
+- **Build & Deploy:** `/docs/BUILD_CHEATSHEET.md` - All build commands and workflows
+- **Launch Checklist:** `/docs/FINAL_CHECKLIST.md` - Complete App Store submission guide
+- **Payment Integration:** `/docs/REVENUECAT_WEBHOOK_DEPLOYMENT.md` - Next deployment step
+- **Legal Docs:** `/docs/PRIVACY_POLICY.md`, `/docs/TERMS_OF_SERVICE.md`
+- **Archived Guides:** `/docs/archive/` - Completed implementation guides (Apple IAP, etc.)
+
+**Maintenance:**
+- Run `/doc-audit` slash command to check documentation health
+- Update `docs/INDEX.md` when adding/removing/archiving documents
+- Add status headers to new docs: `**Last Updated**, **Status**, **Purpose**`
+
 ## Development Environment (IMPORTANT!)
 ⚠️ **Windows + WSL Setup:**
 - This project is developed on Windows with WSL (Windows Subsystem for Linux)

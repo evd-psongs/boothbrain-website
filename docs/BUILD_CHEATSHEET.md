@@ -1,5 +1,9 @@
 # BoothBrain Build & Ship Cheatsheet
 
+**Last Updated:** 2025-12-06
+**Status:** 🟢 Active - Quick reference
+**Purpose:** All build commands and deployment workflows
+
 Quick reference for building and deploying BoothBrain to TestFlight and App Store.
 
 ---
