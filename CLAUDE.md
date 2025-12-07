@@ -1,6 +1,6 @@
 # CLAUDE.md - BoothBrain Development Guide
 
-**Last Updated:** 2025-12-06
+**Last Updated:** 2025-12-07
 
 ## Project Overview
 BoothBrain is an Expo React Native app for managing vendor booth inventory and sales.
@@ -47,9 +47,10 @@ BoothBrain is an Expo React Native app for managing vendor booth inventory and s
 - `test-branch` - Development/testing
 
 **Current Status:**
-- Both branches at commit `a6269fc` (2025-12-06 EAS testing fixes)
+- Both branches at commit `52c8bc0` (2025-12-07 RevenueCat fixes)
 - Branches in sync
-- Active development on `test-branch`, merge to `master` when stable
+- 13 commits ahead of origin/master
+- Active development on both branches (synchronized)
 
 **Quick Commands:**
 ```bash
@@ -61,38 +62,69 @@ npm start -- --clear       # Clear Metro cache if needed
 
 ---
 
-## Current Session (2025-12-06 - EAS Testing & Bug Fixes)
+## Current Session (2025-12-07 - RevenueCat Subscription Fix Marathon)
 
-### What Was Accomplished Today:
-- ✅ **Documentation:** Organized docs with INDEX.md, archived old guides
-- ✅ **Session Join:** Fixed missing `join_session_secure()` database function
-- ✅ **RevenueCat:** Fixed "no singleton instance" error on session restore
-- ✅ **Session Approval:** Fixed approval flow (users now wait for host approval)
-- ✅ **Toast Position:** Moved to center, avoids Dynamic Island overlap
-- ✅ **2FA UI:** Fixed shield icon overlap and cursor position issues
-- ✅ **Session Timeout:** Reduced from 72 hours to 30 minutes (code reusability)
-- ✅ **Quantity Limit:** Added 999 max limit to inventory items
+### What Was Accomplished:
+- ✅ **Environment Variable Fix:** Changed to `EXPO_PUBLIC_REVENUECAT_API_KEY_IOS` in eas.json
+- ✅ **Entitlement Identifier:** Updated from `'pro'` to `'BoothBrain Pro'` to match RevenueCat dashboard
+- ✅ **Debug Logging:** Added comprehensive logging to RevenueCat initialization and subscription modal
+- ✅ **Initialization Guards:** Added proper checks to prevent SDK calls before initialization
+- ✅ **App Store Connect:** Configured subscription product, pricing, localization, and availability
+- ✅ **Agreements & Banking:** Completed Paid Apps Agreement and banking setup (required for sandbox testing)
 
-### Key Commits (2025-12-06):
-- `ee635ce` - Docs: Organize documentation with INDEX and archive
-- `91378b1` - Fix: Session join + RevenueCat initialization bugs
-- `e68475e` - Fix: Session approval flow (pending state)
-- `c062843` - Fix: Toast positioning (center screen)
-- `2bc80db` - Fix: 2FA modal UI (shield icon, cursor)
-- `33449b2` - Config: Session expiry 72h → 30min
-- `a6269fc` - Limit: Quantity max 999
+### Key Commits (2025-12-07):
+- `52c8bc0` - Fix: Update entitlement identifier to match RevenueCat config
+- `a6d719d` - Debug: Add comprehensive logging to RevenueCat initialization
+- `37433ed` - Fix: Use EXPO_PUBLIC_ prefix for RevenueCat API key
+- `98db456` - Fix: Check RevenueCat initialization before using SDK functions
+- `2799d87` - Fix: RevenueCat initialization and timeout handling improvements
 
-### Regression Analysis:
-✅ All changes safe - no breaking changes
-✅ TypeScript: 0 errors
-✅ ESLint: 0 errors
-✅ All previous features still work
+### Current Issue - Apple StoreKit Propagation Delay:
+
+**Problem:** Subscription shows error "None of the products registered in the RevenueCat dashboard could be fetched from App Store Connect"
+
+**Root Cause:** For brand new apps that have never been submitted to App Store, Apple's StoreKit servers can take **up to 24 hours** to make subscriptions available, even in sandbox mode.
+
+**What's Been Verified (All Correct):**
+- ✅ Product ID: `boothbrain_pro_quarterly` (matches everywhere)
+- ✅ Bundle ID: `com.boothbrain.app` (matches App Store Connect, RevenueCat, and code)
+- ✅ Entitlement ID: `BoothBrain Pro` (matches RevenueCat dashboard)
+- ✅ API Key: `EXPO_PUBLIC_REVENUECAT_API_KEY_IOS` configured in eas.json
+- ✅ Subscription created in App Store Connect with status "Ready to Submit"
+- ✅ Subscription attached to app version
+- ✅ Pricing configured ($29.99/quarter for 175 countries)
+- ✅ Availability set (all regions)
+- ✅ Localization complete (English U.S.)
+- ✅ Review screenshot uploaded
+- ✅ Paid Apps Agreement signed and active
+- ✅ Banking information completed
+- ✅ Testing with sandbox account (not personal Apple ID)
+- ✅ RevenueCat offering configured with package
+
+**EAS Build Status:** Build #13/15 used (saved 2 builds by not rebuilding unnecessarily)
 
 ### Next Steps:
-- Build new EAS preview: `npm run build:preview:ios`
-- Test in TestFlight (session join, approval, RevenueCat subscription)
-- Deploy RevenueCat webhook to production
-- Invite beta testers for sandbox IAP testing
+1. **Wait 24 hours** for Apple StoreKit servers to propagate subscription
+2. **Test again on 2025-12-07 afternoon/evening** with same TestFlight build
+3. If still not working, consider StoreKit Configuration File for local testing
+4. Once working, proceed with RevenueCat webhook deployment
+
+### Testing Checklist for Tomorrow:
+- [ ] Open TestFlight on iPhone
+- [ ] Sign out of App Store (Settings → App Store → Sign Out)
+- [ ] Open BoothBrain app
+- [ ] Navigate to Settings → Subscription
+- [ ] Click "View Plans" or "Upgrade to Pro"
+- [ ] Should see quarterly subscription with $29.99 price
+- [ ] Sign in with sandbox account when prompted
+- [ ] Complete test purchase (free in sandbox)
+- [ ] Verify Pro features unlock
+
+### Important Notes:
+- All code changes committed and ready
+- No rebuild needed - current TestFlight build has all fixes
+- Subscription will work once Apple's servers sync (standard 24hr delay for new apps)
+- Alternative: StoreKit Configuration File can bypass wait for local testing
 
 ---
 
