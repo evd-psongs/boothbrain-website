@@ -17,7 +17,7 @@ import Purchases, {
 } from 'react-native-purchases';
 import { Platform } from 'react-native';
 
-const REVENUECAT_API_KEY_IOS = process.env.REVENUECAT_PUBLIC_API_KEY_IOS || '';
+const REVENUECAT_API_KEY_IOS = process.env.EXPO_PUBLIC_REVENUECAT_API_KEY_IOS || '';
 
 // Track initialization state to prevent duplicate configure() calls
 let isInitialized = false;
