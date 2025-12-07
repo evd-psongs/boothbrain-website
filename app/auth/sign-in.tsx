@@ -349,7 +349,7 @@ export default function SignInScreen() {
               <TextInput
                 value={twoFactorCode}
                 onChangeText={setTwoFactorCode}
-                placeholder={useRecoveryCode ? 'XXXX-XXXX' : '000000'}
+                placeholder={useRecoveryCode ? '' : ''} // Empty placeholder to avoid cursor position issues
                 placeholderTextColor={theme.colors.textMuted}
                 keyboardType={useRecoveryCode ? 'default' : 'number-pad'}
                 maxLength={useRecoveryCode ? 9 : 6}
@@ -364,6 +364,7 @@ export default function SignInScreen() {
                     borderColor: theme.colors.border,
                     color: theme.colors.textPrimary,
                     backgroundColor: theme.colors.surface,
+                    letterSpacing: twoFactorCode.length > 0 ? (useRecoveryCode ? 4 : 8) : 0, // Only apply letter spacing when there's text
                   },
                 ]}
               />
@@ -563,7 +564,8 @@ const styles = StyleSheet.create({
   twoFactorContent: {
     flex: 1,
     alignItems: 'center',
-    justifyContent: 'center',
+    justifyContent: 'flex-start', // Changed from 'center' to prevent overlap
+    paddingTop: 60, // Add top padding to center content visually
     gap: 24,
     paddingHorizontal: 20,
   },
@@ -589,7 +591,7 @@ const styles = StyleSheet.create({
     fontSize: 32,
     fontWeight: '700',
     textAlign: 'center',
-    letterSpacing: 12,
+    // letterSpacing applied dynamically in inline style to avoid placeholder cursor issues
   },
   twoFactorButton: {
     width: '100%',
