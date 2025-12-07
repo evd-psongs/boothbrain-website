@@ -2,17 +2,17 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import type { ActiveSession } from '@/types/session';
 
 const SESSION_STORAGE_KEY = 'boothbrain_current_session';
-const SESSION_EXPIRY_HOURS = 72;
+const SESSION_EXPIRY_MINUTES = 30; // Session expires after 30 minutes of inactivity
 
 /**
  * Validates if a session has expired
  * @param session The session to validate
- * @returns True if the session is still valid
+ * @returns True if the session is still valid (within 30 minutes of creation)
  */
 export function isSessionValid(session: ActiveSession): boolean {
   const createdAt = new Date(session.createdAt);
-  const hoursElapsed = (Date.now() - createdAt.getTime()) / (1000 * 60 * 60);
-  return hoursElapsed <= SESSION_EXPIRY_HOURS;
+  const minutesElapsed = (Date.now() - createdAt.getTime()) / (1000 * 60);
+  return minutesElapsed <= SESSION_EXPIRY_MINUTES;
 }
 
 /**
