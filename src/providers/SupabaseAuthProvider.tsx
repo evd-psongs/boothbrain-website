@@ -11,6 +11,7 @@ import { buildAuthUser } from '@/lib/auth/authUserBuilder';
 import { useAuthOperations } from '@/hooks/useAuthOperations';
 import {
   initializeRevenueCat,
+  isRevenueCatInitialized,
   logoutRevenueCat,
   addCustomerInfoUpdateListener,
   getCustomerInfo,
@@ -249,32 +250,37 @@ export function SupabaseAuthProvider({ children }: { children: React.ReactNode }
             try {
               await initializeRevenueCat(newSession.user.id);
 
-              // Clean up old listener if exists (prevent memory leak)
-              if (customerInfoListenerCleanup.current) {
-                customerInfoListenerCleanup.current();
-                customerInfoListenerCleanup.current = null;
-              }
-
-              // Setup listener for purchase updates and store cleanup function
-              const cleanup = addCustomerInfoUpdateListener(async (customerInfo) => {
-                console.log('[Auth] RevenueCat customer info updated');
-                try {
-                  await syncSubscriptionToSupabase(newSession.user.id, customerInfo);
-
-                  // Refresh user data to reflect new subscription
-                  const authUser = await buildAuthUser(newSession.user);
-                  setUser(authUser);
-                } catch (syncErr) {
-                  console.error('[Auth] Failed to sync subscription after update:', syncErr);
+              // Only proceed if initialization succeeded
+              if (isRevenueCatInitialized()) {
+                // Clean up old listener if exists (prevent memory leak)
+                if (customerInfoListenerCleanup.current) {
+                  customerInfoListenerCleanup.current();
+                  customerInfoListenerCleanup.current = null;
                 }
-              });
 
-              // Store cleanup function to prevent memory leaks
-              customerInfoListenerCleanup.current = cleanup;
+                // Setup listener for purchase updates and store cleanup function
+                const cleanup = addCustomerInfoUpdateListener(async (customerInfo) => {
+                  console.log('[Auth] RevenueCat customer info updated');
+                  try {
+                    await syncSubscriptionToSupabase(newSession.user.id, customerInfo);
 
-              // Sync existing subscription if any
-              const customerInfo = await getCustomerInfo();
-              await syncSubscriptionToSupabase(newSession.user.id, customerInfo);
+                    // Refresh user data to reflect new subscription
+                    const authUser = await buildAuthUser(newSession.user);
+                    setUser(authUser);
+                  } catch (syncErr) {
+                    console.error('[Auth] Failed to sync subscription after update:', syncErr);
+                  }
+                });
+
+                // Store cleanup function to prevent memory leaks
+                customerInfoListenerCleanup.current = cleanup;
+
+                // Sync existing subscription if any
+                const customerInfo = await getCustomerInfo();
+                await syncSubscriptionToSupabase(newSession.user.id, customerInfo);
+              } else {
+                console.log('[Auth] RevenueCat not initialized (expected in Expo Go)');
+              }
             } catch (revenueCatErr) {
               console.error('[Auth] RevenueCat setup failed:', revenueCatErr);
               // Don't block login if RevenueCat fails
