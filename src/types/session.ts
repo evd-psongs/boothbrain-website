@@ -41,6 +41,7 @@ export type SessionRow = {
   host_plan_tier?: string;
   host_plan_paused?: boolean;
   is_active?: boolean;
+  join_status?: 'approved' | 'pending'; // Status from join_session_secure/simple function
 };
 
 export const SESSION_CODE_LENGTH = 12;

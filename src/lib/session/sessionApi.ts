@@ -113,6 +113,18 @@ export async function joinSessionApi(
     throw new Error('Session not found or expired.');
   }
 
+  // Check join status from database function
+  const joinStatus = sessionRow.join_status ?? 'approved';
+
+  // If pending approval, return pending result without session data
+  if (joinStatus === 'pending') {
+    return {
+      status: 'pending',
+      session: null,
+      message: 'Waiting for host approval. Please ask the host to approve your request.',
+    };
+  }
+
   const hostPlanTier = normalizePlanTier(sessionRow.host_plan_tier);
   const hostPlanPaused = sessionRow.host_plan_paused ?? false;
 
