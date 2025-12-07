@@ -64,32 +64,48 @@ export function SubscriptionModal({
   const loadOfferings = async () => {
     setLoading(true);
     setError(null);
+    console.log('[SubscriptionModal] 🔍 Loading offerings...');
+    console.log('[SubscriptionModal] User ID:', userId);
+    console.log('[SubscriptionModal] Is initialized:', isRevenueCatInitialized());
+
     try {
       // Ensure RevenueCat is initialized before fetching offerings
       if (!isRevenueCatInitialized()) {
-        console.log('[SubscriptionModal] RevenueCat not initialized, initializing now...');
+        console.log('[SubscriptionModal] ⚠️ RevenueCat not initialized, initializing now...');
         try {
           await initializeRevenueCat(userId);
+          console.log('[SubscriptionModal] ✅ Initialization completed');
+          console.log('[SubscriptionModal] Is now initialized:', isRevenueCatInitialized());
         } catch (initErr: any) {
-          console.error('[SubscriptionModal] Failed to initialize RevenueCat:', initErr);
+          console.error('[SubscriptionModal] ❌ Failed to initialize RevenueCat:', initErr);
           setError('Failed to initialize payment system. Please try again.');
           setLoading(false);
           return;
         }
+      } else {
+        console.log('[SubscriptionModal] ✅ RevenueCat already initialized');
       }
 
+      console.log('[SubscriptionModal] 📦 Fetching offerings from RevenueCat...');
       const offering = await getOfferings();
+      console.log('[SubscriptionModal] Offering received:', !!offering);
+
       if (offering && offering.availablePackages) {
+        console.log('[SubscriptionModal] ✅ Available packages:', offering.availablePackages.length);
         setPackages(offering.availablePackages);
         // Auto-select quarterly by default (or first package)
         const quarterlyPkg = offering.availablePackages.find(
           (pkg) => pkg.identifier.includes('quarterly')
         );
         setSelectedPackage(quarterlyPkg || offering.availablePackages[0] || null);
+        console.log('[SubscriptionModal] ✅ Selected package:', quarterlyPkg?.identifier || offering.availablePackages[0]?.identifier);
       } else {
+        console.warn('[SubscriptionModal] ⚠️ No offering or packages available');
         setError('No subscription plans available');
       }
     } catch (err: any) {
+      console.error('[SubscriptionModal] ❌ Error loading offerings:', err);
+      console.error('[SubscriptionModal] ❌ Error message:', err.message);
       setError(err.message || 'Failed to load subscription plans');
     } finally {
       setLoading(false);

@@ -30,32 +30,46 @@ let currentUserId: string | null = null;
  * @param userId - Supabase user ID to link with RevenueCat
  */
 export async function initializeRevenueCat(userId: string): Promise<void> {
+  // DEBUG: Log environment details
+  console.log('[RevenueCat] 🔍 Initialization attempt');
+  console.log('[RevenueCat] Platform:', Platform.OS);
+  console.log('[RevenueCat] User ID:', userId);
+  console.log('[RevenueCat] API Key present:', !!REVENUECAT_API_KEY_IOS);
+  console.log('[RevenueCat] API Key length:', REVENUECAT_API_KEY_IOS.length);
+  console.log('[RevenueCat] API Key prefix:', REVENUECAT_API_KEY_IOS.substring(0, 10));
+  console.log('[RevenueCat] Already initialized:', isInitialized);
+  console.log('[RevenueCat] Current user ID:', currentUserId);
+
   if (Platform.OS !== 'ios') {
-    console.log('[RevenueCat] Skipping initialization (not iOS)');
+    console.log('[RevenueCat] ❌ Skipping initialization (not iOS)');
     return;
   }
 
   if (!REVENUECAT_API_KEY_IOS) {
-    console.warn('[RevenueCat] Missing API key, skipping initialization');
+    console.warn('[RevenueCat] ❌ Missing API key, skipping initialization');
+    console.warn('[RevenueCat] process.env check:', {
+      hasExpoPublic: !!process.env.EXPO_PUBLIC_REVENUECAT_API_KEY_IOS,
+      allEnvKeys: Object.keys(process.env).filter(k => k.includes('REVENUE')),
+    });
     return;
   }
 
   // If already initialized for this user, skip
   if (isInitialized && currentUserId === userId) {
-    console.log('[RevenueCat] Already initialized for user:', userId);
+    console.log('[RevenueCat] ✅ Already initialized for user:', userId);
     return;
   }
 
   // If initialized for different user, log in as new user
   if (isInitialized && currentUserId !== userId) {
-    console.log('[RevenueCat] Switching user from', currentUserId, 'to', userId);
+    console.log('[RevenueCat] 🔄 Switching user from', currentUserId, 'to', userId);
     try {
       await Purchases.logIn(userId);
       currentUserId = userId;
-      console.log('[RevenueCat] User switched successfully');
+      console.log('[RevenueCat] ✅ User switched successfully');
       return;
     } catch (error) {
-      console.error('[RevenueCat] Failed to switch user:', error);
+      console.error('[RevenueCat] ❌ Failed to switch user:', error);
       // Reset state on error
       isInitialized = false;
       currentUserId = null;
@@ -65,7 +79,8 @@ export async function initializeRevenueCat(userId: string): Promise<void> {
 
   // First time initialization
   try {
-    console.log('[RevenueCat] Starting SDK configuration for user:', userId);
+    console.log('[RevenueCat] 🚀 Starting SDK configuration for user:', userId);
+    console.log('[RevenueCat] 🔑 Using API key:', REVENUECAT_API_KEY_IOS.substring(0, 15) + '...');
 
     // Configure SDK
     await Purchases.configure({
@@ -76,8 +91,10 @@ export async function initializeRevenueCat(userId: string): Promise<void> {
     isInitialized = true;
     currentUserId = userId;
     console.log('[RevenueCat] ✅ Initialized successfully for user:', userId);
+    console.log('[RevenueCat] ✅ isInitialized:', isInitialized);
   } catch (error) {
     console.error('[RevenueCat] ❌ Initialization failed:', error);
+    console.error('[RevenueCat] ❌ Error details:', JSON.stringify(error, null, 2));
     // Reset state on error
     isInitialized = false;
     currentUserId = null;
