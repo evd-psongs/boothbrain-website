@@ -203,15 +203,15 @@ export function SubscriptionModal({
 
   const getPackageTitle = (pkg: PurchasesPackage): string => {
     if (pkg.identifier.includes('monthly')) return 'Monthly';
-    if (pkg.identifier.includes('quarterly')) return 'Quarterly';
-    if (pkg.identifier.includes('yearly')) return 'Yearly';
+    if (pkg.identifier.includes('quarterly') || pkg.identifier.includes('three_month')) return 'Quarterly';
+    if (pkg.identifier.includes('yearly') || pkg.identifier.includes('annual')) return 'Yearly';
     return pkg.identifier;
   };
 
   const getPackageDescription = (pkg: PurchasesPackage): string => {
     if (pkg.identifier.includes('monthly')) return 'Billed monthly';
-    if (pkg.identifier.includes('quarterly')) return 'Billed every 3 months';
-    if (pkg.identifier.includes('yearly')) return 'Best value - Save 17%';
+    if (pkg.identifier.includes('quarterly') || pkg.identifier.includes('three_month')) return 'Billed every 3 months';
+    if (pkg.identifier.includes('yearly') || pkg.identifier.includes('annual')) return 'Best value - Save 17%';
     return '';
   };
 
