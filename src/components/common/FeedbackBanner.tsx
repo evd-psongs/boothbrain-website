@@ -101,17 +101,24 @@ export function FeedbackBanner({
 const styles = StyleSheet.create({
   feedbackToast: {
     position: 'absolute',
-    top: 16,
+    top: '40%', // Center vertically (40% from top for better visibility)
     left: 20,
     right: 20,
     borderWidth: 1,
-    borderRadius: 10,
-    padding: 16,
+    borderRadius: 12,
+    padding: 18,
+    paddingHorizontal: 24,
     zIndex: 1000,
+    // Add shadow for better visibility
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 8, // Android shadow
   },
   feedbackText: {
-    fontSize: 15,
-    fontWeight: '500',
+    fontSize: 16,
+    fontWeight: '600',
     textAlign: 'center',
     color: '#fff',
   },
