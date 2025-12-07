@@ -26,7 +26,7 @@ export async function syncSubscriptionToSupabase(
   customerInfo: CustomerInfo
 ): Promise<void> {
   try {
-    const proEntitlement = customerInfo.entitlements.active['pro'];
+    const proEntitlement = customerInfo.entitlements.active['BoothBrain Pro'];
 
     if (!proEntitlement) {
       console.log('[SubscriptionSync] No active Pro entitlement found');

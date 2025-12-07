@@ -232,7 +232,7 @@ export async function getCustomerInfo(): Promise<CustomerInfo> {
  * @returns True if user has active Pro subscription
  */
 export function hasProEntitlement(customerInfo: CustomerInfo): boolean {
-  const proEntitlement = customerInfo.entitlements.active['pro'];
+  const proEntitlement = customerInfo.entitlements.active['BoothBrain Pro'];
   return proEntitlement !== undefined && proEntitlement.isActive === true;
 }
 
