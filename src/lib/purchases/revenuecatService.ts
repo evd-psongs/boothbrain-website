@@ -56,12 +56,17 @@ export async function initializeRevenueCat(userId: string): Promise<void> {
       return;
     } catch (error) {
       console.error('[RevenueCat] Failed to switch user:', error);
+      // Reset state on error
+      isInitialized = false;
+      currentUserId = null;
       throw error;
     }
   }
 
   // First time initialization
   try {
+    console.log('[RevenueCat] Starting SDK configuration for user:', userId);
+
     // Configure SDK
     await Purchases.configure({
       apiKey: REVENUECAT_API_KEY_IOS,
@@ -70,11 +75,23 @@ export async function initializeRevenueCat(userId: string): Promise<void> {
 
     isInitialized = true;
     currentUserId = userId;
-    console.log('[RevenueCat] Initialized successfully for user:', userId);
+    console.log('[RevenueCat] ✅ Initialized successfully for user:', userId);
   } catch (error) {
-    console.error('[RevenueCat] Initialization failed:', error);
+    console.error('[RevenueCat] ❌ Initialization failed:', error);
+    // Reset state on error
+    isInitialized = false;
+    currentUserId = null;
     throw error;
   }
+}
+
+/**
+ * Check if RevenueCat SDK is initialized
+ *
+ * @returns True if SDK has been configured
+ */
+export function isRevenueCatInitialized(): boolean {
+  return isInitialized;
 }
 
 /**
@@ -84,6 +101,12 @@ export async function initializeRevenueCat(userId: string): Promise<void> {
  * @throws Error if offerings cannot be fetched
  */
 export async function getOfferings(): Promise<PurchasesOffering | null> {
+  if (!isInitialized) {
+    const errorMsg = 'RevenueCat is not initialized. Call initializeRevenueCat() first.';
+    console.error('[RevenueCat]', errorMsg);
+    throw new Error(errorMsg);
+  }
+
   try {
     const offerings = await Purchases.getOfferings();
 
@@ -111,6 +134,12 @@ export async function getOfferings(): Promise<PurchasesOffering | null> {
 export async function purchasePackage(
   packageToPurchase: PurchasesPackage
 ): Promise<CustomerInfo> {
+  if (!isInitialized) {
+    const errorMsg = 'RevenueCat is not initialized. Call initializeRevenueCat() first.';
+    console.error('[RevenueCat]', errorMsg);
+    throw new Error(errorMsg);
+  }
+
   try {
     console.log('[RevenueCat] Starting purchase:', packageToPurchase.identifier);
 
@@ -138,6 +167,12 @@ export async function purchasePackage(
  * @throws Error if restore fails
  */
 export async function restorePurchases(): Promise<CustomerInfo> {
+  if (!isInitialized) {
+    const errorMsg = 'RevenueCat is not initialized. Call initializeRevenueCat() first.';
+    console.error('[RevenueCat]', errorMsg);
+    throw new Error(errorMsg);
+  }
+
   try {
     console.log('[RevenueCat] Starting restore purchases');
 
@@ -158,6 +193,12 @@ export async function restorePurchases(): Promise<CustomerInfo> {
  * @throws Error if fetch fails
  */
 export async function getCustomerInfo(): Promise<CustomerInfo> {
+  if (!isInitialized) {
+    const errorMsg = 'RevenueCat is not initialized. Call initializeRevenueCat() first.';
+    console.error('[RevenueCat]', errorMsg);
+    throw new Error(errorMsg);
+  }
+
   try {
     const customerInfo = await Purchases.getCustomerInfo();
     return customerInfo;

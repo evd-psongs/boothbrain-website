@@ -55,9 +55,11 @@ export async function fetchSubscription(userId: string): Promise<Subscription | 
       return result;
     };
 
+    // iOS dev: no retry, fail fast to prevent infinite loading
+    // Production & Android: retry with backoff for better reliability
     const result = isIOS && isDevelopment
-      ? await fetchFn() // No retry on iOS in dev for faster failure
-      : await withRetry(fetchFn);
+      ? await fetchFn()
+      : await withRetry(fetchFn, 1, 500); // Reduced to 1 retry (2 total attempts)
 
     const { data, error } = result as { data: any; error: any };
 
@@ -105,9 +107,9 @@ export async function fetchSubscription(userId: string): Promise<Subscription | 
         : null,
     };
   } catch (error: any) {
-    // On iOS timeout, return null instead of throwing to allow app to load
-    if (isIOS && error.message?.includes('Timed out')) {
-      console.warn('Subscription fetch timed out on iOS, continuing with null subscription');
+    // On iOS dev timeout, return null instead of throwing to allow app to load
+    if (isIOS && isDevelopment && error.message?.includes('Timed out')) {
+      console.warn('[iOS Dev] Subscription fetch timed out, continuing with null subscription');
       return null;
     }
     throw error;

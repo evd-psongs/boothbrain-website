@@ -26,6 +26,8 @@ import {
   getOfferings,
   purchasePackage,
   restorePurchases,
+  initializeRevenueCat,
+  isRevenueCatInitialized,
 } from '@/lib/purchases';
 import { syncSubscriptionToSupabase } from '@/lib/purchases';
 import { PrimaryButton, SecondaryButton } from '@/components/common';
@@ -63,6 +65,19 @@ export function SubscriptionModal({
     setLoading(true);
     setError(null);
     try {
+      // Ensure RevenueCat is initialized before fetching offerings
+      if (!isRevenueCatInitialized()) {
+        console.log('[SubscriptionModal] RevenueCat not initialized, initializing now...');
+        try {
+          await initializeRevenueCat(userId);
+        } catch (initErr: any) {
+          console.error('[SubscriptionModal] Failed to initialize RevenueCat:', initErr);
+          setError('Failed to initialize payment system. Please try again.');
+          setLoading(false);
+          return;
+        }
+      }
+
       const offering = await getOfferings();
       if (offering && offering.availablePackages) {
         setPackages(offering.availablePackages);

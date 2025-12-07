@@ -6,6 +6,7 @@
 // RevenueCat SDK wrapper
 export {
   initializeRevenueCat,
+  isRevenueCatInitialized,
   getOfferings,
   purchasePackage,
   restorePurchases,

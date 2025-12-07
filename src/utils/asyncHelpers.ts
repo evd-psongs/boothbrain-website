@@ -172,15 +172,15 @@ export type TimeoutConfig = {
 
 const DEFAULT_TIMEOUTS: TimeoutConfig = {
   session: 10000, // Keep session timeout a bit longer
-  profile: 5000,  // Fail fast for profile (5s) so user isn't waiting
-  subscription: 5000,
+  profile: 8000,  // Increased from 5s to 8s for better reliability
+  subscription: 8000, // Increased from 5s to 8s for better reliability
   default: 10000,
 };
 
 const IOS_DEV_TIMEOUTS: TimeoutConfig = {
   session: 3000,
-  profile: 5000,
-  subscription: 5000,
+  profile: 4000,  // Slightly shorter for iOS Expo Go to prevent infinite loading
+  subscription: 4000, // Slightly shorter for iOS Expo Go to prevent infinite loading
   default: 5000,
 };
 
