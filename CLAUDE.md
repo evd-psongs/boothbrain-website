@@ -47,9 +47,9 @@ BoothBrain is an Expo React Native app for managing vendor booth inventory and s
 - `test-branch` - Development/testing
 
 **Current Status:**
-- Both branches at commit `52c8bc0` (2025-12-07 RevenueCat fixes)
+- Both branches at commit `6c2ce94` (2025-12-07 post-purchase fix attempt)
 - Branches in sync
-- 13 commits ahead of origin/master
+- 16 commits ahead of origin/master
 - Active development on both branches (synchronized)
 
 **Quick Commands:**
@@ -62,69 +62,70 @@ npm start -- --clear       # Clear Metro cache if needed
 
 ---
 
-## Current Session (2025-12-07 - RevenueCat Subscription Fix Marathon)
+## Current Session (2025-12-07 - RevenueCat Subscription Integration)
 
 ### What Was Accomplished:
+- ✅ **Subscription Integration Working:** Products load, purchases complete, Pro features unlock
 - ✅ **Environment Variable Fix:** Changed to `EXPO_PUBLIC_REVENUECAT_API_KEY_IOS` in eas.json
 - ✅ **Entitlement Identifier:** Updated from `'pro'` to `'BoothBrain Pro'` to match RevenueCat dashboard
-- ✅ **Debug Logging:** Added comprehensive logging to RevenueCat initialization and subscription modal
-- ✅ **Initialization Guards:** Added proper checks to prevent SDK calls before initialization
-- ✅ **App Store Connect:** Configured subscription product, pricing, localization, and availability
-- ✅ **Agreements & Banking:** Completed Paid Apps Agreement and banking setup (required for sandbox testing)
+- ✅ **Package Title Fix:** Modal now shows "Quarterly" instead of `$rc_three_month`
+- ✅ **TestFlight Sandbox:** Discovered TestFlight auto-sandboxes purchases (no separate test accounts needed!)
+- ✅ **App Store Connect:** Fully configured - subscription, pricing, agreements, banking all done
 
 ### Key Commits (2025-12-07):
+- `6c2ce94` - Fix: Prevent post-purchase infinite loading hang (attempted fix - still broken)
+- `6eb3ace` - Fix: Display 'Quarterly' instead of package identifier in subscription modal
 - `52c8bc0` - Fix: Update entitlement identifier to match RevenueCat config
 - `a6d719d` - Debug: Add comprehensive logging to RevenueCat initialization
-- `37433ed` - Fix: Use EXPO_PUBLIC_ prefix for RevenueCat API key
-- `98db456` - Fix: Check RevenueCat initialization before using SDK functions
-- `2799d87` - Fix: RevenueCat initialization and timeout handling improvements
 
-### Current Issue - Apple StoreKit Propagation Delay:
+### 🚨 CRITICAL BUG - Post-Purchase Infinite Loading
 
-**Problem:** Subscription shows error "None of the products registered in the RevenueCat dashboard could be fetched from App Store Connect"
+**Problem:** After successful purchase, app shows white screen with loading spinner indefinitely. User must delete and reinstall app from TestFlight to recover.
 
-**Root Cause:** For brand new apps that have never been submitted to App Store, Apple's StoreKit servers can take **up to 24 hours** to make subscriptions available, even in sandbox mode.
+**What We Tried (commit `6c2ce94`):**
+1. Removed `refreshSession()` from onSuccess callback - didn't help
+2. Added `syncInProgressRef` flag to prevent concurrent syncs - didn't help
+3. Added 10-second timeout to sync operations - didn't help
 
-**What's Been Verified (All Correct):**
-- ✅ Product ID: `boothbrain_pro_quarterly` (matches everywhere)
-- ✅ Bundle ID: `com.boothbrain.app` (matches App Store Connect, RevenueCat, and code)
-- ✅ Entitlement ID: `BoothBrain Pro` (matches RevenueCat dashboard)
-- ✅ API Key: `EXPO_PUBLIC_REVENUECAT_API_KEY_IOS` configured in eas.json
-- ✅ Subscription created in App Store Connect with status "Ready to Submit"
-- ✅ Subscription attached to app version
-- ✅ Pricing configured ($29.99/quarter for 175 countries)
-- ✅ Availability set (all regions)
-- ✅ Localization complete (English U.S.)
-- ✅ Review screenshot uploaded
-- ✅ Paid Apps Agreement signed and active
-- ✅ Banking information completed
-- ✅ Testing with sandbox account (not personal Apple ID)
-- ✅ RevenueCat offering configured with package
+**Root Cause Analysis:**
+The issue is likely deeper than just race conditions. After purchase:
+1. Modal calls `syncSubscriptionToSupabase()`
+2. Modal calls `onSuccess()` then `onClose()`
+3. RevenueCat listener fires `addCustomerInfoUpdateListener`
+4. Auth state change may trigger
+5. Something in this flow causes `loading: true` to get stuck
 
-**EAS Build Status:** Build #13/15 used (saved 2 builds by not rebuilding unnecessarily)
+**Files Involved:**
+- `src/components/modals/SubscriptionModal.tsx` - handlePurchase() flow
+- `src/providers/SupabaseAuthProvider.tsx` - onAuthStateChange listener, RevenueCat setup
+- `app/(tabs)/settings.tsx` - onSuccess callback
 
-### Next Steps:
-1. **Wait 24 hours** for Apple StoreKit servers to propagate subscription
-2. **Test again on 2025-12-07 afternoon/evening** with same TestFlight build
-3. If still not working, consider StoreKit Configuration File for local testing
-4. Once working, proceed with RevenueCat webhook deployment
+**Possible Investigation Areas:**
+1. The `loading` state in SupabaseAuthProvider - what's keeping it true?
+2. The `buildAuthUser()` call after sync - is it hanging on DB query?
+3. Modal state after onClose() - is something re-rendering incorrectly?
+4. Check if error is being thrown but not caught somewhere
+5. Consider moving subscription sync entirely out of the purchase flow (rely only on webhook)
 
-### Testing Checklist for Tomorrow:
-- [ ] Open TestFlight on iPhone
-- [ ] Sign out of App Store (Settings → App Store → Sign Out)
-- [ ] Open BoothBrain app
-- [ ] Navigate to Settings → Subscription
-- [ ] Click "View Plans" or "Upgrade to Pro"
-- [ ] Should see quarterly subscription with $29.99 price
-- [ ] Sign in with sandbox account when prompted
-- [ ] Complete test purchase (free in sandbox)
-- [ ] Verify Pro features unlock
+**EAS Build Status:** 15/15 builds used for December - OUT OF BUILDS
 
-### Important Notes:
-- All code changes committed and ready
-- No rebuild needed - current TestFlight build has all fixes
-- Subscription will work once Apple's servers sync (standard 24hr delay for new apps)
-- Alternative: StoreKit Configuration File can bypass wait for local testing
+### Next Steps (Next Month / When Builds Available):
+1. **Add extensive logging** to track exactly where the hang occurs
+2. **Test with webhook-only sync** - remove all client-side sync after purchase
+3. **Investigate buildAuthUser()** - may be the bottleneck
+4. **Consider simpler flow:** Purchase → close modal → let webhook handle sync → user refreshes manually
+
+### What IS Working:
+- ✅ Subscription products load from RevenueCat/App Store
+- ✅ Purchase flow completes (Apple confirms purchase)
+- ✅ Pro features unlock after reinstall
+- ✅ Subscription syncs to Supabase database
+- ✅ Modal UI shows "Quarterly" properly
+
+### Testing Notes:
+- TestFlight automatically sandboxes purchases - use your regular Apple ID
+- No need to sign out of App Store or use sandbox accounts
+- After purchase bug, delete app and reinstall from TestFlight to test again
 
 ---
 
