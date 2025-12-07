@@ -187,6 +187,15 @@ export function SupabaseAuthProvider({ children }: { children: React.ReactNode }
         setSession(initialSession);
 
         if (initialSession?.user) {
+          // Initialize RevenueCat for iOS users on initial session load
+          if (Platform.OS === 'ios') {
+            try {
+              await initializeRevenueCat(initialSession.user.id);
+            } catch (error) {
+              console.error('RevenueCat: Initialization failed on initial load', error);
+            }
+          }
+
           const authUser = await buildAuthUser(initialSession.user);
           setUser(authUser);
         }

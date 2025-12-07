@@ -19,6 +19,10 @@ import { Platform } from 'react-native';
 
 const REVENUECAT_API_KEY_IOS = process.env.REVENUECAT_PUBLIC_API_KEY_IOS || '';
 
+// Track initialization state to prevent duplicate configure() calls
+let isInitialized = false;
+let currentUserId: string | null = null;
+
 /**
  * Initialize RevenueCat SDK
  * Call this once during app startup (in SupabaseAuthProvider)
@@ -36,6 +40,27 @@ export async function initializeRevenueCat(userId: string): Promise<void> {
     return;
   }
 
+  // If already initialized for this user, skip
+  if (isInitialized && currentUserId === userId) {
+    console.log('[RevenueCat] Already initialized for user:', userId);
+    return;
+  }
+
+  // If initialized for different user, log in as new user
+  if (isInitialized && currentUserId !== userId) {
+    console.log('[RevenueCat] Switching user from', currentUserId, 'to', userId);
+    try {
+      await Purchases.logIn(userId);
+      currentUserId = userId;
+      console.log('[RevenueCat] User switched successfully');
+      return;
+    } catch (error) {
+      console.error('[RevenueCat] Failed to switch user:', error);
+      throw error;
+    }
+  }
+
+  // First time initialization
   try {
     // Configure SDK
     await Purchases.configure({
@@ -43,6 +68,8 @@ export async function initializeRevenueCat(userId: string): Promise<void> {
       appUserID: userId, // Link RevenueCat user to Supabase user
     });
 
+    isInitialized = true;
+    currentUserId = userId;
     console.log('[RevenueCat] Initialized successfully for user:', userId);
   } catch (error) {
     console.error('[RevenueCat] Initialization failed:', error);
@@ -158,6 +185,7 @@ export function hasProEntitlement(customerInfo: CustomerInfo): boolean {
 export async function logoutRevenueCat(): Promise<void> {
   try {
     await Purchases.logOut();
+    currentUserId = null; // Reset current user tracking
     console.log('[RevenueCat] User logged out');
   } catch (error) {
     console.error('[RevenueCat] Logout failed:', error);
