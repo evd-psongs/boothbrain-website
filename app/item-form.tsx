@@ -377,6 +377,10 @@ export default function ItemFormScreen() {
       setFeedback({ type: 'error', message: 'Quantity must be zero or greater.' });
       return;
     }
+    if (quantityValue > 999) {
+      setFeedback({ type: 'error', message: 'Quantity cannot exceed 999.' });
+      return;
+    }
 
     const lowStockValue = Number.parseInt(form.lowStock, 10) || 0;
 
@@ -771,6 +775,7 @@ export default function ItemFormScreen() {
                 onChangeText={(text) => handleChange('quantity', text)}
                 placeholder="10"
                 keyboardType="number-pad"
+                maxLength={3}
                 editable={!formDisabled}
                 themeColors={theme.colors}
               />
@@ -908,6 +913,7 @@ function FormField({
   editable = true,
   keyboardType,
   autoCapitalize,
+  maxLength,
   themeColors,
 }: {
   label: string;
@@ -918,6 +924,7 @@ function FormField({
   editable?: boolean;
   keyboardType?: 'default' | 'number-pad' | 'decimal-pad';
   autoCapitalize?: 'none' | 'sentences' | 'words' | 'characters';
+  maxLength?: number;
   themeColors: ReturnType<typeof useTheme>['theme']['colors'];
 }) {
   return (
@@ -931,6 +938,7 @@ function FormField({
         editable={editable}
         keyboardType={keyboardType}
         autoCapitalize={autoCapitalize}
+        maxLength={maxLength}
         style={[styles.fieldInput, { borderColor: themeColors.border, color: themeColors.textPrimary }]}
       />
       {helper ? <Text style={[styles.fieldHelper, { color: themeColors.textMuted }]}>{helper}</Text> : null}
