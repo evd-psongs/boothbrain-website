@@ -947,9 +947,10 @@ export default function SettingsScreen() {
         <SubscriptionModal
           visible={showSubscriptionModal}
           onClose={() => setShowSubscriptionModal(false)}
-          onSuccess={async () => {
-            // Refresh user data after successful purchase
-            await refreshSession();
+          onSuccess={() => {
+            // Don't call refreshSession() here - it causes race conditions
+            // The subscription is already synced in the modal and RevenueCat listener
+            // will automatically refresh user data via onAuthStateChange
             setFeedback({ type: 'success', message: 'Successfully subscribed to Pro!' });
           }}
           userId={user?.id || ''}

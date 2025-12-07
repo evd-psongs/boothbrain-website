@@ -48,6 +48,7 @@ export function SupabaseAuthProvider({ children }: { children: React.ReactNode }
   const [error, setError] = useState<string | null>(null);
   const initializingRef = useRef(true);
   const customerInfoListenerCleanup = useRef<(() => void) | null>(null);
+  const syncInProgressRef = useRef(false); // Prevent concurrent subscription syncs
 
   // Use extracted auth operations hook
   const { signUp, signIn, signOut, resetPassword, updatePassword, refreshSession } =
@@ -261,23 +262,49 @@ export function SupabaseAuthProvider({ children }: { children: React.ReactNode }
                 // Setup listener for purchase updates and store cleanup function
                 const cleanup = addCustomerInfoUpdateListener(async (customerInfo) => {
                   console.log('[Auth] RevenueCat customer info updated');
+
+                  // Prevent concurrent syncs - if already syncing, skip this update
+                  // The subscription modal already syncs after purchase
+                  if (syncInProgressRef.current) {
+                    console.log('[Auth] Sync already in progress, skipping duplicate');
+                    return;
+                  }
+
+                  syncInProgressRef.current = true;
                   try {
-                    await syncSubscriptionToSupabase(newSession.user.id, customerInfo);
+                    // Add timeout to prevent hanging
+                    const syncPromise = syncSubscriptionToSupabase(newSession.user.id, customerInfo);
+                    const timeoutPromise = new Promise((_, reject) =>
+                      setTimeout(() => reject(new Error('Subscription sync timed out')), 10000)
+                    );
+
+                    await Promise.race([syncPromise, timeoutPromise]);
 
                     // Refresh user data to reflect new subscription
                     const authUser = await buildAuthUser(newSession.user);
                     setUser(authUser);
                   } catch (syncErr) {
                     console.error('[Auth] Failed to sync subscription after update:', syncErr);
+                  } finally {
+                    syncInProgressRef.current = false;
                   }
                 });
 
                 // Store cleanup function to prevent memory leaks
                 customerInfoListenerCleanup.current = cleanup;
 
-                // Sync existing subscription if any
-                const customerInfo = await getCustomerInfo();
-                await syncSubscriptionToSupabase(newSession.user.id, customerInfo);
+                // Sync existing subscription if any (with same protection)
+                if (!syncInProgressRef.current) {
+                  syncInProgressRef.current = true;
+                  try {
+                    const customerInfo = await getCustomerInfo();
+                    await syncSubscriptionToSupabase(newSession.user.id, customerInfo);
+                  } catch (syncErr) {
+                    console.error('[Auth] Initial subscription sync failed:', syncErr);
+                  } finally {
+                    syncInProgressRef.current = false;
+                  }
+                }
               } else {
                 console.log('[Auth] RevenueCat not initialized (expected in Expo Go)');
               }
