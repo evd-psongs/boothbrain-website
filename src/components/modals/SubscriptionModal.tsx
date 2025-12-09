@@ -29,7 +29,6 @@ import {
   initializeRevenueCat,
   isRevenueCatInitialized,
 } from '@/lib/purchases';
-import { syncSubscriptionToSupabase } from '@/lib/purchases';
 import { PrimaryButton, SecondaryButton } from '@/components/common';
 import type { Theme } from '@/providers/ThemeProvider';
 
@@ -121,33 +120,12 @@ export function SubscriptionModal({
     setPurchasing(true);
     setError(null);
     try {
-      const customerInfo = await purchasePackage(selectedPackage);
-
-      // Sync to Supabase with retry logic
-      // If sync fails, webhook will be the backup
-      let syncSuccess = false;
-      for (let attempt = 1; attempt <= 3; attempt++) {
-        try {
-          await syncSubscriptionToSupabase(userId, customerInfo);
-          syncSuccess = true;
-          console.log('[SubscriptionModal] Sync succeeded on attempt', attempt);
-          break;
-        } catch (syncErr) {
-          console.error(`[SubscriptionModal] Sync attempt ${attempt} failed:`, syncErr);
-          if (attempt < 3) {
-            // Wait before retry (exponential backoff: 1s, 2s)
-            await new Promise(resolve => setTimeout(resolve, attempt * 1000));
-          }
-        }
-      }
-
-      if (!syncSuccess) {
-        console.warn('[SubscriptionModal] All sync attempts failed, relying on webhook');
-        // Don't fail the purchase - webhook will sync it
-        // Show a different message to user
-        setError('Purchase successful! Subscription will activate shortly.');
-      }
-
+      await purchasePackage(selectedPackage);
+      // Don't sync here - the RevenueCat listener in SupabaseAuthProvider
+      // will handle syncing to Supabase. This prevents race conditions
+      // between modal sync and listener sync that caused infinite loading.
+      // Webhook is the ultimate fallback if listener sync fails.
+      console.log('[SubscriptionModal] Purchase completed, listener will sync');
       onSuccess();
       onClose();
     } catch (err: any) {
@@ -165,29 +143,9 @@ export function SubscriptionModal({
     setRestoring(true);
     setError(null);
     try {
-      const customerInfo = await restorePurchases();
-
-      // Sync to Supabase with retry logic
-      let syncSuccess = false;
-      for (let attempt = 1; attempt <= 3; attempt++) {
-        try {
-          await syncSubscriptionToSupabase(userId, customerInfo);
-          syncSuccess = true;
-          console.log('[SubscriptionModal] Restore sync succeeded on attempt', attempt);
-          break;
-        } catch (syncErr) {
-          console.error(`[SubscriptionModal] Restore sync attempt ${attempt} failed:`, syncErr);
-          if (attempt < 3) {
-            await new Promise(resolve => setTimeout(resolve, attempt * 1000));
-          }
-        }
-      }
-
-      if (!syncSuccess) {
-        console.warn('[SubscriptionModal] Restore sync failed, relying on webhook');
-        setError('Purchases restored! Subscription will activate shortly.');
-      }
-
+      await restorePurchases();
+      // Don't sync here - the RevenueCat listener will handle it
+      console.log('[SubscriptionModal] Restore completed, listener will sync');
       onSuccess();
       onClose();
     } catch (err: any) {
