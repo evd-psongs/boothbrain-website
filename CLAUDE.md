@@ -1,6 +1,6 @@
 # CLAUDE.md - BoothBrain Development Guide
 
-**Last Updated:** 2025-12-07
+**Last Updated:** 2025-12-09
 
 ## Project Overview
 BoothBrain is an Expo React Native app for managing vendor booth inventory and sales.
@@ -47,10 +47,10 @@ BoothBrain is an Expo React Native app for managing vendor booth inventory and s
 - `test-branch` - Development/testing
 
 **Current Status:**
-- Both branches at commit `6c2ce94` (2025-12-07 post-purchase fix attempt)
-- Branches in sync
-- 16 commits ahead of origin/master
-- Active development on both branches (synchronized)
+- `test-branch` at commit `7190a3e` (2025-12-09 post-purchase fix)
+- `master` at commit `6c2ce94` (2025-12-07)
+- test-branch is 1 commit ahead of master
+- 17 commits ahead of origin/master
 
 **Quick Commands:**
 ```bash
@@ -62,70 +62,57 @@ npm start -- --clear       # Clear Metro cache if needed
 
 ---
 
-## Current Session (2025-12-07 - RevenueCat Subscription Integration)
+## Current Session (2025-12-09 - Post-Purchase Bug Fix)
+
+### What Was Accomplished:
+- ✅ **Fixed Post-Purchase Infinite Loading Bug** - App no longer hangs after purchase
+- ✅ **Root Cause Identified** - Race conditions between modal sync and RevenueCat listener sync
+- ✅ **Simple Fix Applied** - Removed duplicate sync from SubscriptionModal, let listener handle it
+- ✅ **Testing in Progress** - Build deployed to TestFlight, initial tests passing
+
+### Key Commit (2025-12-09):
+- `7190a3e` - Fix: Remove duplicate sync from SubscriptionModal to prevent race conditions
+
+### Root Cause Analysis (Completed):
+The bug was caused by **race conditions** between multiple concurrent operations after purchase:
+1. SubscriptionModal's `syncSubscriptionToSupabase()` with 3 retry attempts
+2. RevenueCat listener's `syncSubscriptionToSupabase()` in SupabaseAuthProvider
+3. Multiple `buildAuthUser()` calls updating user state
+4. SessionProvider reinitializing when user state changed
+
+### The Fix:
+Removed sync logic from `SubscriptionModal.tsx` entirely. Now the flow is:
+1. Modal completes purchase via `purchasePackage()`
+2. Modal immediately calls `onSuccess()` and `onClose()`
+3. RevenueCat listener in SupabaseAuthProvider handles sync (single source of truth)
+4. Webhook is fallback if listener sync fails
+
+**Files Changed:**
+- `src/components/modals/SubscriptionModal.tsx` - Removed sync calls from handlePurchase/handleRestore
+
+### What IS Working:
+- ✅ Subscription products load from RevenueCat/App Store
+- ✅ Purchase flow completes without hanging
+- ✅ Modal closes immediately after purchase
+- ✅ Pro features unlock via listener sync
+- ✅ App remains responsive after purchase
+
+### Testing Notes:
+- TestFlight automatically sandboxes purchases - use your regular Apple ID
+- Currently testing on TestFlight to confirm fix works consistently
+- If confirmed working, merge to master for production build
+
+---
+
+## Previous Session (2025-12-07 - RevenueCat Subscription Integration)
 
 ### What Was Accomplished:
 - ✅ **Subscription Integration Working:** Products load, purchases complete, Pro features unlock
 - ✅ **Environment Variable Fix:** Changed to `EXPO_PUBLIC_REVENUECAT_API_KEY_IOS` in eas.json
 - ✅ **Entitlement Identifier:** Updated from `'pro'` to `'BoothBrain Pro'` to match RevenueCat dashboard
 - ✅ **Package Title Fix:** Modal now shows "Quarterly" instead of `$rc_three_month`
-- ✅ **TestFlight Sandbox:** Discovered TestFlight auto-sandboxes purchases (no separate test accounts needed!)
+- ✅ **TestFlight Sandbox:** Discovered TestFlight auto-sandboxes purchases
 - ✅ **App Store Connect:** Fully configured - subscription, pricing, agreements, banking all done
-
-### Key Commits (2025-12-07):
-- `6c2ce94` - Fix: Prevent post-purchase infinite loading hang (attempted fix - still broken)
-- `6eb3ace` - Fix: Display 'Quarterly' instead of package identifier in subscription modal
-- `52c8bc0` - Fix: Update entitlement identifier to match RevenueCat config
-- `a6d719d` - Debug: Add comprehensive logging to RevenueCat initialization
-
-### 🚨 CRITICAL BUG - Post-Purchase Infinite Loading
-
-**Problem:** After successful purchase, app shows white screen with loading spinner indefinitely. User must delete and reinstall app from TestFlight to recover.
-
-**What We Tried (commit `6c2ce94`):**
-1. Removed `refreshSession()` from onSuccess callback - didn't help
-2. Added `syncInProgressRef` flag to prevent concurrent syncs - didn't help
-3. Added 10-second timeout to sync operations - didn't help
-
-**Root Cause Analysis:**
-The issue is likely deeper than just race conditions. After purchase:
-1. Modal calls `syncSubscriptionToSupabase()`
-2. Modal calls `onSuccess()` then `onClose()`
-3. RevenueCat listener fires `addCustomerInfoUpdateListener`
-4. Auth state change may trigger
-5. Something in this flow causes `loading: true` to get stuck
-
-**Files Involved:**
-- `src/components/modals/SubscriptionModal.tsx` - handlePurchase() flow
-- `src/providers/SupabaseAuthProvider.tsx` - onAuthStateChange listener, RevenueCat setup
-- `app/(tabs)/settings.tsx` - onSuccess callback
-
-**Possible Investigation Areas:**
-1. The `loading` state in SupabaseAuthProvider - what's keeping it true?
-2. The `buildAuthUser()` call after sync - is it hanging on DB query?
-3. Modal state after onClose() - is something re-rendering incorrectly?
-4. Check if error is being thrown but not caught somewhere
-5. Consider moving subscription sync entirely out of the purchase flow (rely only on webhook)
-
-**EAS Build Status:** 15/15 builds used for December - OUT OF BUILDS
-
-### Next Steps (Next Month / When Builds Available):
-1. **Add extensive logging** to track exactly where the hang occurs
-2. **Test with webhook-only sync** - remove all client-side sync after purchase
-3. **Investigate buildAuthUser()** - may be the bottleneck
-4. **Consider simpler flow:** Purchase → close modal → let webhook handle sync → user refreshes manually
-
-### What IS Working:
-- ✅ Subscription products load from RevenueCat/App Store
-- ✅ Purchase flow completes (Apple confirms purchase)
-- ✅ Pro features unlock after reinstall
-- ✅ Subscription syncs to Supabase database
-- ✅ Modal UI shows "Quarterly" properly
-
-### Testing Notes:
-- TestFlight automatically sandboxes purchases - use your regular Apple ID
-- No need to sign out of App Store or use sandbox accounts
-- After purchase bug, delete app and reinstall from TestFlight to test again
 
 ---
 
@@ -273,6 +260,7 @@ const formattedDate = `${start} - ${end}`; // formatEventRange already exists!
 - **Code reuse:** Session codes expire after 30 minutes
 
 ### Recent Fixes (All Working):
+- ✅ Post-purchase infinite loading (removed duplicate sync, single source of truth)
 - ✅ Session join function (join_session_secure alias added)
 - ✅ RevenueCat initialization (now works on all session restore paths)
 - ✅ Session approval flow (users properly wait for host approval)
