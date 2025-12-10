@@ -296,10 +296,17 @@ export function SupabaseAuthProvider({ children }: { children: React.ReactNode }
                 // Store cleanup function to prevent memory leaks
                 customerInfoListenerCleanup.current = cleanup;
 
-                // Sync existing subscription if any and refresh user once
-                if (!syncInProgressRef.current) {
+                // Only sync subscription on specific events, not on every auth state change
+                // INITIAL_SESSION: App opened with existing session - subscription already in DB
+                // SIGNED_IN: User just logged in - sync to ensure fresh data
+                // TOKEN_REFRESHED: Token refreshed - might have subscription changes
+                // USER_UPDATED: User data changed - might affect subscription
+                const shouldSyncNow = event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED' || event === 'USER_UPDATED';
+
+                if (shouldSyncNow && !syncInProgressRef.current) {
                   syncInProgressRef.current = true;
                   try {
+                    console.log(`[Auth] Syncing subscription on ${event} event`);
                     const customerInfo = await getCustomerInfo();
                     await syncSubscriptionToSupabase(newSession.user.id, customerInfo);
                     // Refresh user here since we just synced subscription data
@@ -311,6 +318,8 @@ export function SupabaseAuthProvider({ children }: { children: React.ReactNode }
                   } finally {
                     syncInProgressRef.current = false;
                   }
+                } else if (!shouldSyncNow) {
+                  console.log(`[Auth] Skipping subscription sync on ${event} event (not needed)`);
                 }
               } else {
                 console.log('[Auth] RevenueCat not initialized (expected in Expo Go)');
