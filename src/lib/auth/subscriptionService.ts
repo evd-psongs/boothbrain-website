@@ -1,7 +1,6 @@
 import { Platform } from 'react-native';
 import { supabase } from '@/lib/supabase';
 import type { Subscription } from '@/types/auth';
-import { isPauseAllowanceUsed } from '@/utils/subscriptionPause';
 import { withTimeout, withRetry, getTimeout } from '@/utils/asyncHelpers';
 
 const isIOS = Platform.OS === 'ios';
@@ -20,8 +19,6 @@ export async function fetchSubscription(userId: string): Promise<Subscription | 
     current_period_end,
     canceled_at,
     trial_ends_at,
-    paused_at,
-    pause_used_period_start,
     plan_id,
     payment_platform,
     apple_original_transaction_id,
@@ -75,22 +72,15 @@ export async function fetchSubscription(userId: string): Promise<Subscription | 
 
     const raw = data as any;
     const planRow = Array.isArray(raw?.plans) ? raw.plans[0] : raw.plans;
-    const pauseUsedPeriodStart: string | null = raw.pause_used_period_start ?? null;
-    const currentPeriodStart: string | null = raw.current_period_start ?? null;
-
-    const pauseAllowanceUsed = isPauseAllowanceUsed(currentPeriodStart, pauseUsedPeriodStart);
 
     return {
       id: raw.id,
       userId,
       status: raw.status,
-      currentPeriodStart,
+      currentPeriodStart: raw.current_period_start,
       currentPeriodEnd: raw.current_period_end,
       canceledAt: raw.canceled_at,
       trialEndsAt: raw.trial_ends_at,
-      pausedAt: raw.paused_at,
-      pauseUsedPeriodStart,
-      pauseAllowanceUsed,
       paymentPlatform: raw.payment_platform ?? 'stripe',
       appleOriginalTransactionId: raw.apple_original_transaction_id ?? null,
       appleProductId: raw.apple_product_id ?? null,
@@ -124,9 +114,6 @@ export async function fetchSubscription(userId: string): Promise<Subscription | 
 export function isSubscriptionActive(subscription: Subscription | null): boolean {
   if (!subscription) return false;
 
-  // Check for pause
-  if (subscription.pausedAt) return false;
-
   // Apple IAP subscriptions - check expiration date
   if (subscription.paymentPlatform === 'apple') {
     const now = new Date();
@@ -149,7 +136,7 @@ export function isSubscriptionActive(subscription: Subscription | null): boolean
  * @returns The effective plan tier
  */
 export function getEffectivePlanTier(subscription: Subscription | null): string {
-  if (!subscription || subscription.pausedAt) return 'free';
+  if (!subscription) return 'free';
   if (!isSubscriptionActive(subscription)) return 'free';
 
   return subscription.plan?.tier ?? 'free';

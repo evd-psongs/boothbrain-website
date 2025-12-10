@@ -45,7 +45,7 @@ export function useSessionOperations({
 
       try {
         const userPlanTier = user.subscription?.plan?.tier;
-        const userPlanPaused = Boolean(user.subscription?.pausedAt);
+        const userPlanPaused = false;
 
         const session = await createSessionApi(
           user.id,

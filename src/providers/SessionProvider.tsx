@@ -64,7 +64,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
             const updatedSession: ActiveSession = {
               ...restoredSession,
               hostPlanTier: normalizePlanTier(user.subscription?.plan?.tier),
-              hostPlanPaused: Boolean(user.subscription?.pausedAt),
+              hostPlanPaused: false,
             };
             setCurrentSession(updatedSession);
             await persistSession(updatedSession);
@@ -90,7 +90,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
   const sharedPlanTier: SubscriptionPlanTier = currentSession
     ? currentSession.hostPlanTier
     : normalizePlanTier(user?.subscription?.plan?.tier);
-  const sharedPlanPaused = currentSession ? currentSession.hostPlanPaused : Boolean(user?.subscription?.pausedAt);
+  const sharedPlanPaused = currentSession ? currentSession.hostPlanPaused : false;
 
   const value = useMemo<SessionContextValue>(
     () => ({

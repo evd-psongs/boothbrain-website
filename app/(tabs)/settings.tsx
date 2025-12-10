@@ -27,7 +27,6 @@ import { PaymentSettingsSection } from '@/components/settings/PaymentSettingsSec
 import { SubscriptionModal } from '@/components/modals';
 import { useSubscriptionPlans } from '@/hooks/useSubscriptionPlans';
 import { startCheckoutSession } from '@/lib/billing';
-import { pauseSubscription, resumeSubscription } from '@/lib/subscriptions';
 import { supabase } from '@/lib/supabase';
 import { useSession, SESSION_CODE_LENGTH } from '@/providers/SessionProvider';
 import { useSupabaseAuth } from '@/providers/SupabaseAuthProvider';
@@ -35,8 +34,7 @@ import { useTheme } from '@/providers/ThemeProvider';
 import { formatCurrencyFromCents } from '@/utils/currency';
 import type { SubscriptionPlan } from '@/types/auth';
 import { getErrorMessage } from '@/types/database';
-import { enforceFreePlanLimits, FREE_PLAN_ITEM_LIMIT } from '@/lib/freePlanLimits';
-import { PAUSE_ALREADY_USED_MESSAGE } from '@/utils/pauseErrors';
+import { FREE_PLAN_ITEM_LIMIT } from '@/lib/freePlanLimits';
 import { isProSubscriptionAvailable, getProUnavailableMessage, isAndroid } from '@/utils/platform';
 import { testCrash } from '@/lib/services/firebase';
 import Constants from 'expo-constants';
@@ -176,7 +174,6 @@ export default function SettingsScreen() {
   const [showJoinForm, setShowJoinForm] = useState(false);
   const [launchingCheckout, setLaunchingCheckout] = useState(false);
   const [checkoutPlanTier, setCheckoutPlanTier] = useState<string | null>(null);
-  const [managingPause, setManagingPause] = useState(false);
   const [showSubscriptionModal, setShowSubscriptionModal] = useState(false);
 
   useEffect(() => {
@@ -191,18 +188,15 @@ export default function SettingsScreen() {
 
   const subscription = user?.subscription ?? null;
   const currentPlanTier = subscription?.plan?.tier ?? 'free';
-  const isSubscriptionPaused = Boolean(subscription?.pausedAt);
-  const pauseAllowanceUsed = Boolean(subscription?.pauseAllowanceUsed);
   const trialDaysRemaining = useMemo(() => calculateDaysRemaining(subscription?.trialEndsAt ?? null), [
     subscription?.trialEndsAt,
   ]);
 
   const planName = useMemo(() => {
-    if (isSubscriptionPaused) return 'Free';
     if (subscription?.plan?.name) return subscription.plan.name;
     if (currentPlanTier) return formatStatus(currentPlanTier);
     return 'Free';
-  }, [subscription?.plan, currentPlanTier, isSubscriptionPaused]);
+  }, [subscription?.plan, currentPlanTier]);
 
   const priceDescription = subscription?.plan ? formatPlanPrice(subscription.plan) : null;
 
@@ -223,21 +217,12 @@ export default function SettingsScreen() {
     }
     return rows;
   }, [planName, priceDescription, subscription?.currentPeriodEnd, trialDaysRemaining]);
-  // Pause only available for Stripe subscriptions (Apple IAP managed via iOS Settings)
-  const canManagePause = Boolean(subscription?.id && currentPlanTier !== 'free' && subscription?.paymentPlatform === 'stripe');
-  const pauseRestrictionMessage = useMemo(() => {
-    if (!pauseAllowanceUsed || isSubscriptionPaused) return null;
-    if (subscription?.currentPeriodEnd) {
-      return `You can pause again after ${new Date(subscription.currentPeriodEnd).toLocaleDateString()}.`;
-    }
-    return 'You can pause again after your next billing date.';
-  }, [pauseAllowanceUsed, isSubscriptionPaused, subscription?.currentPeriodEnd]);
   const availablePlans = useMemo(
     () => normalizedPlans.filter((plan) => plan.tier !== currentPlanTier),
     [normalizedPlans, currentPlanTier],
   );
   const showPlansSpinner = (plansLoading || plansFetching) && !(plansData && plansData.length);
-  const showFreeLimitNotice = currentPlanTier === 'free' || isSubscriptionPaused;
+  const showFreeLimitNotice = currentPlanTier === 'free';
 
   const joinCodeReady = useMemo(
     () => stripJoinCodeFormatting(joinCode).length === SESSION_CODE_LENGTH,
@@ -474,75 +459,6 @@ export default function SettingsScreen() {
     [user?.id, showFeedback],
   );
 
-  const applyPauseState = useCallback(
-    async (mode: 'pause' | 'resume') => {
-      if (!user?.id || !canManagePause) return;
-      if (mode === 'pause' && pauseAllowanceUsed && !isSubscriptionPaused) {
-        showFeedback({ type: 'error', message: PAUSE_ALREADY_USED_MESSAGE });
-        return;
-      }
-      setManagingPause(true);
-      try {
-        if (mode === 'resume') {
-          await resumeSubscription(user.id);
-          showFeedback({ type: 'success', message: 'Subscription resumed.' });
-        } else {
-          await pauseSubscription(user.id);
-          const { removedInventory, removedStaged } = await enforceFreePlanLimits(user.id);
-
-          let notice = 'Subscription paused. Your account now matches the Free plan limits.';
-          const removalParts: string[] = [];
-          if (removedInventory > 0) {
-            removalParts.push(`${removedInventory} inventory item${removedInventory === 1 ? '' : 's'}`);
-          }
-          if (removedStaged > 0) {
-            removalParts.push(`${removedStaged} staged item${removedStaged === 1 ? '' : 's'}`);
-          }
-          if (removalParts.length) {
-            notice = `${notice} Removed ${removalParts.join(' and ')}.`;
-          }
-          showFeedback({ type: 'success', message: notice });
-        }
-        await refreshSession();
-      } catch (error: any) {
-        console.error('Failed to update subscription pause state', error);
-        showFeedback({ type: 'error', message: error?.message ?? 'Failed to update subscription.' });
-      } finally {
-        setManagingPause(false);
-      }
-    },
-    [user?.id, canManagePause, pauseAllowanceUsed, isSubscriptionPaused, refreshSession, showFeedback],
-  );
-
-  const handleManagePause = useCallback(() => {
-    if (!user?.id || !canManagePause) return;
-
-    if (isSubscriptionPaused) {
-      void applyPauseState('resume');
-      return;
-    }
-
-    if (pauseAllowanceUsed) {
-      Alert.alert('Pause unavailable', PAUSE_ALREADY_USED_MESSAGE);
-      return;
-    }
-
-    Alert.alert(
-      'Pause subscription?',
-      `Pausing will downgrade you to the Free plan. Only your ${FREE_PLAN_ITEM_LIMIT} most recent items will remain and the rest will be permanently removed. Export or back up your inventory before continuing.`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Pause subscription',
-          style: 'destructive',
-          onPress: () => {
-            void applyPauseState('pause');
-          },
-        },
-      ],
-    );
-  }, [user?.id, canManagePause, isSubscriptionPaused, pauseAllowanceUsed, applyPauseState]);
-
   const handleRefreshSubscription = useCallback(async () => {
     setRefreshingAccount(true);
     try {
@@ -708,19 +624,11 @@ export default function SettingsScreen() {
               />
               {showFreeLimitNotice ? (
                 <Text style={[styles.freeLimitNotice, { color: theme.colors.textSecondary }]}>
-                  {isSubscriptionPaused
-                    ? `While paused, only your ${FREE_PLAN_ITEM_LIMIT} most recent items are kept.`
-                    : `Free accounts can track up to ${FREE_PLAN_ITEM_LIMIT} total items across inventory and staging.`}
+                  Free accounts can track up to {FREE_PLAN_ITEM_LIMIT} total items across inventory and staging.
                 </Text>
               ) : null}
             </View>
           </View>
-
-          {isSubscriptionPaused ? (
-            <View style={[styles.notice, { backgroundColor: 'rgba(255, 196, 61, 0.12)', borderColor: theme.colors.warning }]}>
-              <Text style={[styles.noticeText, { color: theme.colors.warning }]}>Billing is paused. Resume to restore premium features.</Text>
-            </View>
-          ) : null}
 
           {subscriptionDetails.map((row) => (
             <View key={row.label} style={styles.metaRow}>
@@ -744,33 +652,6 @@ export default function SettingsScreen() {
               <Text style={[styles.noticeText, { color: theme.colors.textPrimary }]}>
                 To manage your subscription, go to iOS Settings → [Your Name] → Subscriptions
               </Text>
-            </View>
-          ) : null}
-
-          {canManagePause ? (
-            <View
-              style={[styles.pauseCard, {
-                borderColor: theme.colors.warning,
-                backgroundColor: 'rgba(247, 181, 0, 0.12)',
-              }]}
-            >
-              <Text style={[styles.pauseTitle, { color: theme.colors.textPrimary }]}>Pause subscription</Text>
-              <Text style={[styles.pauseBody, { color: theme.colors.textSecondary }]}>
-                Need a break between markets? Pause your Pro plan once per billing cycle and we will hold your data until you resume.
-              </Text>
-              {pauseRestrictionMessage ? (
-                <Text style={[styles.pauseRestriction, { color: theme.colors.textSecondary }]}>
-                  {pauseRestrictionMessage}
-                </Text>
-              ) : null}
-              <PrimaryButton
-                title={isSubscriptionPaused ? 'Resume subscription' : 'Pause subscription'}
-                onPress={handleManagePause}
-                disabled={managingPause || (!isSubscriptionPaused && pauseAllowanceUsed)}
-                loading={managingPause}
-                backgroundColor={isSubscriptionPaused ? theme.colors.success : theme.colors.warning}
-                textColor={isSubscriptionPaused ? theme.colors.surface : theme.colors.textPrimary}
-              />
             </View>
           ) : null}
 
@@ -1136,21 +1017,6 @@ const styles = StyleSheet.create({
   planButtonSpacing: {
     marginTop: 12,
   },
-  pauseCard: {
-    borderWidth: 1,
-    borderRadius: 12,
-    padding: 16,
-    gap: 12,
-    marginTop: 16,
-  },
-  pauseTitle: {
-    fontSize: 15,
-    fontWeight: '600',
-  },
-  pauseBody: {
-    fontSize: 13,
-    lineHeight: 20,
-  },
   comingSoonCard: {
     borderWidth: 2,
     borderRadius: 12,
@@ -1174,10 +1040,6 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontStyle: 'italic',
     textAlign: 'center',
-  },
-  pauseRestriction: {
-    fontSize: 12,
-    lineHeight: 18,
   },
   freeLimitNotice: {
     fontSize: 13,

@@ -31,10 +31,7 @@ export type Subscription = {
   currentPeriodEnd: string | null;
   canceledAt: string | null;
   trialEndsAt: string | null;
-  pausedAt: string | null;
-  pauseUsedPeriodStart: string | null;
-  pauseAllowanceUsed: boolean;
-  // Apple IAP fields (Phase 2)
+  // Apple IAP fields
   paymentPlatform?: 'stripe' | 'apple' | 'google';
   appleOriginalTransactionId?: string | null;
   appleProductId?: string | null;
