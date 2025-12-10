@@ -71,7 +71,7 @@ export async function syncSubscriptionToSupabase(
     // This ensures one active subscription per product, with history preserved
     const { data: existingSubscription } = await supabase
       .from('subscriptions')
-      .select('id')
+      .select('id, status, apple_original_transaction_id, current_period_end, canceled_at, trial_ends_at')
       .eq('user_id', userId)
       .eq('apple_product_id', productId)
       .eq('payment_platform', 'apple')
@@ -92,6 +92,19 @@ export async function syncSubscriptionToSupabase(
     };
 
     if (existingSubscription) {
+      // Check if any meaningful data has changed before updating
+      const hasChanged =
+        existingSubscription.status !== status ||
+        existingSubscription.apple_original_transaction_id !== transactionId ||
+        existingSubscription.current_period_end !== expirationDate ||
+        existingSubscription.canceled_at !== mappedCanceledAt ||
+        existingSubscription.trial_ends_at !== (periodType === 'TRIAL' ? expirationDate : null);
+
+      if (!hasChanged) {
+        console.log('[SubscriptionSync] Subscription unchanged, skipping update');
+        return;
+      }
+
       // Update existing subscription
       console.log('[SubscriptionSync] Updating existing subscription:', existingSubscription.id);
 
