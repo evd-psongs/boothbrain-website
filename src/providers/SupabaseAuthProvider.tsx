@@ -246,6 +246,9 @@ export function SupabaseAuthProvider({ children }: { children: React.ReactNode }
 
       if (newSession?.user) {
         try {
+          // Track if we've already refreshed user in iOS block to avoid duplicate calls
+          let userAlreadyRefreshed = false;
+
           // Initialize RevenueCat for iOS users
           if (Platform.OS === 'ios') {
             try {
@@ -293,12 +296,16 @@ export function SupabaseAuthProvider({ children }: { children: React.ReactNode }
                 // Store cleanup function to prevent memory leaks
                 customerInfoListenerCleanup.current = cleanup;
 
-                // Sync existing subscription if any (with same protection)
+                // Sync existing subscription if any and refresh user once
                 if (!syncInProgressRef.current) {
                   syncInProgressRef.current = true;
                   try {
                     const customerInfo = await getCustomerInfo();
                     await syncSubscriptionToSupabase(newSession.user.id, customerInfo);
+                    // Refresh user here since we just synced subscription data
+                    const authUser = await buildAuthUser(newSession.user);
+                    setUser(authUser);
+                    userAlreadyRefreshed = true;
                   } catch (syncErr) {
                     console.error('[Auth] Initial subscription sync failed:', syncErr);
                   } finally {
@@ -314,8 +321,11 @@ export function SupabaseAuthProvider({ children }: { children: React.ReactNode }
             }
           }
 
-          const authUser = await buildAuthUser(newSession.user);
-          setUser(authUser);
+          // Only call buildAuthUser if we haven't already refreshed in iOS block
+          if (!userAlreadyRefreshed) {
+            const authUser = await buildAuthUser(newSession.user);
+            setUser(authUser);
+          }
         } catch (err) {
           console.error('Failed to load user after auth change', err);
           setError(getErrorMessage(err));
