@@ -31,16 +31,3 @@ export async function checkNetworkConnectivity(): Promise<boolean> {
   }
 }
 
-/**
- * Delay utility for retries
- */
-export const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
-
-/**
- * Check if error is a network timeout
- */
-export const isTimeoutError = (error: any): boolean => {
-  return error?.message?.includes('Timed out') ||
-         error?.message?.includes('timeout') ||
-         error?.message?.includes('aborted');
-};
