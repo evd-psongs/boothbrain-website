@@ -287,14 +287,16 @@ export function PaymentSettingsSection({ theme, userId, showFeedback }: PaymentS
             </View>
           </View>
 
-          <PrimaryButton
-            title="Save payment links"
-            onPress={handleSavePaymentSettings}
-            disabled={!paymentsDirty || savingPayments}
-            loading={savingPayments}
-            backgroundColor={theme.colors.primaryDark}
-            textColor={theme.colors.surface}
-          />
+          <View style={styles.saveButtonContainer}>
+            <PrimaryButton
+              title="Save payment links"
+              onPress={handleSavePaymentSettings}
+              disabled={!paymentsDirty || savingPayments}
+              loading={savingPayments}
+              backgroundColor={theme.colors.primaryDark}
+              textColor={theme.colors.surface}
+            />
+          </View>
         </>
       )}
     </View>
@@ -368,5 +370,8 @@ const styles = StyleSheet.create({
   paypalRemoveButton: {
     alignSelf: 'stretch',
     width: '100%',
+  },
+  saveButtonContainer: {
+    marginTop: 12,
   },
 });
