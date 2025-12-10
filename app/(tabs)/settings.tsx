@@ -967,6 +967,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderRadius: 12,
     padding: 12,
+    marginTop: 12,
     marginBottom: 12,
   },
   noticeText: {
