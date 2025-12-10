@@ -1,6 +1,6 @@
 # CLAUDE.md - BoothBrain Development Guide
 
-**Last Updated:** 2025-12-09
+**Last Updated:** 2025-12-10
 
 ## Project Overview
 BoothBrain is an Expo React Native app for managing vendor booth inventory and sales.
@@ -47,10 +47,9 @@ BoothBrain is an Expo React Native app for managing vendor booth inventory and s
 - `test-branch` - Development/testing
 
 **Current Status:**
-- `test-branch` at commit `7190a3e` (2025-12-09 post-purchase fix)
-- `master` at commit `6c2ce94` (2025-12-07)
-- test-branch is 1 commit ahead of master
-- 17 commits ahead of origin/master
+- Both `test-branch` and `master` at commit `b7dac7f` (2025-12-10)
+- All branches synced and pushed to origin/master
+- Clean working tree
 
 **Quick Commands:**
 ```bash
@@ -62,57 +61,91 @@ npm start -- --clear       # Clear Metro cache if needed
 
 ---
 
-## Current Session (2025-12-09 - Post-Purchase Bug Fix)
+## Current Session (2025-12-10 - UI Improvements & Code Cleanup)
 
 ### What Was Accomplished:
-- ✅ **Fixed Post-Purchase Infinite Loading Bug** - App no longer hangs after purchase
-- ✅ **Root Cause Identified** - Race conditions between modal sync and RevenueCat listener sync
-- ✅ **Simple Fix Applied** - Removed duplicate sync from SubscriptionModal, let listener handle it
-- ✅ **Testing in Progress** - Build deployed to TestFlight, initial tests passing
 
-### Key Commit (2025-12-09):
-- `7190a3e` - Fix: Remove duplicate sync from SubscriptionModal to prevent race conditions
+#### 1. **Subscription Pause Feature Removed** ✅
+- Apple IAP doesn't support user-initiated subscription pauses
+- Removed all pause UI, logic, types, and utility files
+- Users can cancel subscriptions via iOS Settings (standard Apple flow)
+- **Files removed:** `src/lib/subscriptions.ts`, `src/utils/subscriptionPause.ts`, `src/utils/pauseErrors.ts`, tests
+- **Types updated:** Removed `pausedAt`, `pauseAllowanceUsed` from Subscription type
 
-### Root Cause Analysis (Completed):
-The bug was caused by **race conditions** between multiple concurrent operations after purchase:
-1. SubscriptionModal's `syncSubscriptionToSupabase()` with 3 retry attempts
-2. RevenueCat listener's `syncSubscriptionToSupabase()` in SupabaseAuthProvider
-3. Multiple `buildAuthUser()` calls updating user state
-4. SessionProvider reinitializing when user state changed
+#### 2. **Performance Optimizations** ✅
+- **Fix #1:** Eliminated duplicate `buildAuthUser` call on iOS auth state change
+  - Tracked with `userAlreadyRefreshed` flag to skip redundant network calls
+  - Saves one profile + subscription fetch per login
+- **Fix #2:** Skip redundant subscription sync on `INITIAL_SESSION` event
+  - Only sync on `SIGNED_IN`, `TOKEN_REFRESHED`, `USER_UPDATED` events
+  - Reduces unnecessary RevenueCat API calls on app startup
+- **Fix #3:** Skip database writes when subscription data unchanged
+  - Compare incoming data with existing record before updating
+  - Reduces Supabase API usage and database load
 
-### The Fix:
-Removed sync logic from `SubscriptionModal.tsx` entirely. Now the flow is:
-1. Modal completes purchase via `purchasePackage()`
-2. Modal immediately calls `onSuccess()` and `onClose()`
-3. RevenueCat listener in SupabaseAuthProvider handles sync (single source of truth)
-4. Webhook is fallback if listener sync fails
+#### 3. **UI Spacing Improvements** ✅
+- Increased Settings screen card gap from 16px to 24px
+- Added 12px spacing before "Save payment links" button
+- Added 12px top margin to notice boxes (e.g., iOS Settings notice)
 
-**Files Changed:**
-- `src/components/modals/SubscriptionModal.tsx` - Removed sync calls from handlePurchase/handleRestore
+#### 4. **Toast Notification Redesign** ✅
+- Replaced solid green/red background with subtle accent border design
+- New design: Surface background + 4px colored left border + primary text color
+- More modern, less "shouty" appearance
+- Works great in both light and dark modes
 
-### What IS Working:
-- ✅ Subscription products load from RevenueCat/App Store
-- ✅ Purchase flow completes without hanging
-- ✅ Modal closes immediately after purchase
-- ✅ Pro features unlock via listener sync
-- ✅ App remains responsive after purchase
+#### 5. **FeedbackBanner Consolidation** ⚠️ **IN PROGRESS**
+- **Problem:** 5 duplicate implementations of FeedbackBanner (1 shared + 4 local copies)
+- **Goal:** Delete local copies, use shared component from `@/components/common`
+- **Status:** 3 of 4 completed (item-form.tsx ✅, sale.tsx ✅, orders.tsx ✅)
+- **Remaining:** inventory.tsx (partially done, needs completion)
 
-### Testing Notes:
-- TestFlight automatically sandboxes purchases - use your regular Apple ID
-- Currently testing on TestFlight to confirm fix works consistently
-- If confirmed working, merge to master for production build
+### In Progress - FeedbackBanner Consolidation:
 
----
+**What's Left:**
+1. Finish updating `app/(tabs)/inventory.tsx`:
+   - Remove `infoColor` prop from usage (line 532)
+   - Remove local FeedbackBanner function (starts around line 854)
+   - Remove feedbackBanner & feedbackText styles
+2. Run `npm run typecheck` to verify
+3. Commit all changes
 
-## Previous Session (2025-12-07 - RevenueCat Subscription Integration)
+**Current State:**
+- Import already added: `import { FeedbackBanner, type FeedbackState } from '@/components/common'`
+- Local FeedbackState type already removed
+- Usage still has `infoColor={theme.colors.primary}` that needs removing
+- Local function still exists
 
-### What Was Accomplished:
-- ✅ **Subscription Integration Working:** Products load, purchases complete, Pro features unlock
-- ✅ **Environment Variable Fix:** Changed to `EXPO_PUBLIC_REVENUECAT_API_KEY_IOS` in eas.json
-- ✅ **Entitlement Identifier:** Updated from `'pro'` to `'BoothBrain Pro'` to match RevenueCat dashboard
-- ✅ **Package Title Fix:** Modal now shows "Quarterly" instead of `$rc_three_month`
-- ✅ **TestFlight Sandbox:** Discovered TestFlight auto-sandboxes purchases
-- ✅ **App Store Connect:** Fully configured - subscription, pricing, agreements, banking all done
+**To Complete:**
+```typescript
+// Remove infoColor from usage (around line 532):
+<FeedbackBanner
+  feedback={feedback}
+  successColor={theme.colors.success}
+  errorColor={theme.colors.error}
+  // DELETE THIS LINE: infoColor={theme.colors.primary}
+  surfaceColor={theme.colors.surface}
+  textColor={theme.colors.textPrimary}
+/>
+
+// Delete entire local FeedbackBanner function (around line 854-882)
+// Delete feedbackBanner and feedbackText styles from StyleSheet
+```
+
+**Benefits After Completion:**
+- ~100 lines of duplicate code removed
+- All toasts animated consistently (shared component has animations)
+- Single source of truth for future toast changes
+
+### Key Commits (2025-12-10):
+- `5721296` - Remove: Subscription pause feature (not supported by Apple IAP)
+- `bcae93b` - Perf: Skip database writes when subscription data unchanged
+- `4590dab` - UI: Increase spacing between Settings screen cards
+- `b529b16` - UI: Add spacing between Remove QR code and Save payment links buttons
+- `a77740c` - UI: Add spacing between Refresh button and iOS Settings notice
+- `b7dac7f` - UI: Redesign toast notifications with subtle accent border design
+
+**Note:** Previous session details (2025-12-09 post-purchase fix, 2025-12-07 RevenueCat integration) moved to `/docs/archive/SESSION_HISTORY.md`
 
 ---
 
