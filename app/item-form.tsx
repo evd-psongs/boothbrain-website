@@ -890,16 +890,16 @@ function FeedbackBanner({
 }) {
   if (!feedback) return null;
 
-  const palette =
+  const accentColor =
     feedback.type === 'success'
-      ? { border: colors.success, background: 'rgba(45, 186, 127, 0.12)', text: colors.success }
+      ? colors.success
       : feedback.type === 'error'
-      ? { border: colors.error, background: 'rgba(243, 105, 110, 0.12)', text: colors.error }
-      : { border: colors.primary, background: 'rgba(101, 88, 245, 0.12)', text: colors.primary };
+      ? colors.error
+      : colors.primary;
 
   return (
-    <View style={[styles.feedbackBanner, { borderColor: palette.border, backgroundColor: palette.background }]}>
-      <Text style={[styles.feedbackText, { color: palette.text }]}>{feedback.message}</Text>
+    <View style={[styles.feedbackBanner, { borderLeftColor: accentColor, backgroundColor: colors.surface }]}>
+      <Text style={[styles.feedbackText, { color: colors.textPrimary }]}>{feedback.message}</Text>
     </View>
   );
 }
@@ -992,7 +992,7 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   feedbackBanner: {
-    borderWidth: 1,
+    borderLeftWidth: 4,
     borderRadius: 12,
     paddingHorizontal: 16,
     paddingVertical: 12,

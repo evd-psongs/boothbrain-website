@@ -10,6 +10,8 @@ interface FeedbackBannerProps {
   feedback: FeedbackState;
   successColor: string;
   errorColor: string;
+  surfaceColor: string;
+  textColor: string;
 }
 
 /**
@@ -33,6 +35,8 @@ export function FeedbackBanner({
   feedback,
   successColor,
   errorColor,
+  surfaceColor,
+  textColor,
 }: FeedbackBannerProps) {
   const [currentFeedback, setCurrentFeedback] = useState<FeedbackState>(null);
   const opacity = useRef(new Animated.Value(0)).current;
@@ -82,18 +86,21 @@ export function FeedbackBanner({
   if (!currentFeedback) return null;
 
   const isSuccess = currentFeedback.type === 'success';
-  const palette = isSuccess ? successColor : errorColor;
+  const accentColor = isSuccess ? successColor : errorColor;
 
   return (
     <Animated.View
       pointerEvents="none"
       style={[
         styles.feedbackToast,
-        { backgroundColor: palette, borderColor: palette },
+        {
+          backgroundColor: surfaceColor,
+          borderLeftColor: accentColor,
+        },
         { opacity, transform: [{ translateY }] },
       ]}
     >
-      <Text style={styles.feedbackText}>{currentFeedback.message}</Text>
+      <Text style={[styles.feedbackText, { color: textColor }]}>{currentFeedback.message}</Text>
     </Animated.View>
   );
 }
@@ -104,7 +111,7 @@ const styles = StyleSheet.create({
     top: '40%', // Center vertically (40% from top for better visibility)
     left: 20,
     right: 20,
-    borderWidth: 1,
+    borderLeftWidth: 4,
     borderRadius: 12,
     padding: 18,
     paddingHorizontal: 24,
@@ -112,14 +119,13 @@ const styles = StyleSheet.create({
     // Add shadow for better visibility
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
     elevation: 8, // Android shadow
   },
   feedbackText: {
     fontSize: 16,
     fontWeight: '600',
     textAlign: 'center',
-    color: '#fff',
   },
 });

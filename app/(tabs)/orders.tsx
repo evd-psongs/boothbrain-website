@@ -339,6 +339,8 @@ export default function OrdersScreen() {
             successColor={theme.colors.success}
             infoColor={theme.colors.primary}
             errorColor={theme.colors.error}
+            surfaceColor={theme.colors.surface}
+            textColor={theme.colors.textPrimary}
           />
         ) : null}
 
@@ -651,33 +653,37 @@ function FeedbackBanner({
   successColor,
   infoColor,
   errorColor,
+  surfaceColor,
+  textColor,
 }: {
   feedback: FeedbackState;
   successColor: string;
   infoColor: string;
   errorColor: string;
+  surfaceColor: string;
+  textColor: string;
 }) {
   if (!feedback) return null;
 
-  const palette =
+  const accentColor =
     feedback.type === 'success'
-      ? { border: successColor, background: 'rgba(45, 186, 127, 0.12)', text: successColor }
+      ? successColor
       : feedback.type === 'error'
-        ? { border: errorColor, background: 'rgba(243, 105, 110, 0.12)', text: errorColor }
-        : { border: infoColor, background: 'rgba(101, 88, 245, 0.12)', text: infoColor };
+        ? errorColor
+        : infoColor;
 
   return (
     <View
       style={{
-        borderWidth: 1,
+        borderLeftWidth: 4,
         borderRadius: 12,
         paddingVertical: 12,
         paddingHorizontal: 16,
-        borderColor: palette.border,
-        backgroundColor: palette.background,
+        borderLeftColor: accentColor,
+        backgroundColor: surfaceColor,
       }}
     >
-      <Text style={{ fontSize: 14, fontWeight: '500', color: palette.text }}>{feedback.message}</Text>
+      <Text style={{ fontSize: 14, fontWeight: '500', color: textColor }}>{feedback.message}</Text>
     </View>
   );
 }

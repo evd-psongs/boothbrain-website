@@ -523,6 +523,8 @@ export default function SaleScreen() {
             successColor={theme.colors.success}
             errorColor={theme.colors.error}
             infoColor={theme.colors.primary}
+            surfaceColor={theme.colors.surface}
+            textColor={theme.colors.textPrimary}
           />
         ) : null}
 
@@ -721,22 +723,26 @@ function FeedbackBanner({
   successColor,
   errorColor,
   infoColor,
+  surfaceColor,
+  textColor,
 }: {
   feedback: FeedbackState;
   successColor: string;
   errorColor: string;
   infoColor: string;
+  surfaceColor: string;
+  textColor: string;
 }) {
   if (!feedback) return null;
-  const palette =
+  const accentColor =
     feedback.type === 'success'
-      ? { border: successColor, background: 'rgba(45, 186, 127, 0.12)', text: successColor }
+      ? successColor
       : feedback.type === 'error'
-        ? { border: errorColor, background: 'rgba(243, 105, 110, 0.12)', text: errorColor }
-        : { border: infoColor, background: 'rgba(101, 88, 245, 0.12)', text: infoColor };
+        ? errorColor
+        : infoColor;
   return (
-    <View style={[styles.feedbackBanner, { borderColor: palette.border, backgroundColor: palette.background }]}>
-      <Text style={[styles.feedbackText, { color: palette.text }]}>{feedback.message}</Text>
+    <View style={[styles.feedbackBanner, { borderLeftColor: accentColor, backgroundColor: surfaceColor }]}>
+      <Text style={[styles.feedbackText, { color: textColor }]}>{feedback.message}</Text>
     </View>
   );
 }
@@ -973,7 +979,7 @@ const styles = StyleSheet.create({
   },
   feedbackBanner: {
     borderRadius: 12,
-    borderWidth: 1,
+    borderLeftWidth: 4,
     paddingVertical: 12,
     paddingHorizontal: 16,
     marginBottom: 16,

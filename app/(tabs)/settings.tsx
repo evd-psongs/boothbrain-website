@@ -555,7 +555,13 @@ export default function SettingsScreen() {
 
   return (
     <SafeAreaView style={[styles.safeArea, { backgroundColor: theme.colors.background }] }>
-      <FeedbackBanner feedback={feedback} successColor={theme.colors.success} errorColor={theme.colors.error} />
+      <FeedbackBanner
+        feedback={feedback}
+        successColor={theme.colors.success}
+        errorColor={theme.colors.error}
+        surfaceColor={theme.colors.surface}
+        textColor={theme.colors.textPrimary}
+      />
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
         <View style={styles.header}>
           <Text style={[styles.screenTitle, { color: theme.colors.textPrimary }]}>Settings</Text>
