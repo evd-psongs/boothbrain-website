@@ -19,6 +19,7 @@ import { useFocusEffect, useRouter } from 'expo-router';
 import { useTheme } from '@/providers/ThemeProvider';
 import { useSupabaseAuth } from '@/providers/SupabaseAuthProvider';
 import { useSession } from '@/providers/SessionProvider';
+import { FeedbackBanner, type FeedbackState } from '@/components/common';
 import { useInventory } from '@/hooks/useInventory';
 import { useEventStagedInventory } from '@/hooks/useEventStagedInventory';
 import { useEvents } from '@/hooks/useEvents';
@@ -39,11 +40,6 @@ import { ImportModal } from '@/components/inventory/ImportModal';
 import { ImportSummaryCard } from '@/components/inventory/ImportSummaryCard';
 import { InventoryListItem } from '@/components/inventory/InventoryListItem';
 import { FREE_PLAN_ITEM_LIMIT } from '@/lib/freePlanLimits';
-
-type FeedbackState = {
-  type: 'success' | 'error' | 'info';
-  message: string;
-} | null;
 
 type SummaryFilter = 'all' | 'low' | 'out';
 
@@ -853,36 +849,6 @@ export default function InventoryScreen() {
   );
 }
 
-function FeedbackBanner({
-  feedback,
-  successColor,
-  errorColor,
-  infoColor,
-  surfaceColor,
-  textColor,
-}: {
-  feedback: FeedbackState;
-  successColor: string;
-  errorColor: string;
-  infoColor: string;
-  surfaceColor: string;
-  textColor: string;
-}) {
-  if (!feedback) return null;
-  const accentColor =
-    feedback.type === 'success'
-      ? successColor
-      : feedback.type === 'error'
-      ? errorColor
-      : infoColor;
-
-  return (
-    <View style={[styles.feedbackBanner, { borderLeftColor: accentColor, backgroundColor: surfaceColor }]}>
-      <Text style={[styles.feedbackText, { color: textColor }]}>{feedback.message}</Text>
-    </View>
-  );
-}
-
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
@@ -894,17 +860,6 @@ const styles = StyleSheet.create({
     width: '100%',
     maxWidth: 720,
     alignSelf: 'center',
-  },
-  feedbackBanner: {
-    borderRadius: 12,
-    borderLeftWidth: 4,
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    marginBottom: 16,
-  },
-  feedbackText: {
-    fontSize: 14,
-    fontWeight: '500',
   },
   hero: {
     borderRadius: 20,

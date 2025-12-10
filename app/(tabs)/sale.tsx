@@ -20,6 +20,7 @@ import { useFocusEffect, useRouter } from 'expo-router';
 import { useTheme } from '@/providers/ThemeProvider';
 import { useSupabaseAuth } from '@/providers/SupabaseAuthProvider';
 import { useSession } from '@/providers/SessionProvider';
+import { FeedbackBanner, type FeedbackState } from '@/components/common';
 import { createOrder } from '@/lib/orders';
 import { useInventory } from '@/hooks/useInventory';
 import type { InventoryItem } from '@/types/inventory';
@@ -30,11 +31,6 @@ import { useCartStore } from '@/state/cartStore';
 import type { PaymentMethod } from '@/types/orders';
 import { CheckoutModal, QuantityModal } from '@/components/modals';
 import type { DiscountSelection, CheckoutMethod } from '@/components/modals';
-
-type FeedbackState = {
-  type: 'success' | 'error' | 'info';
-  message: string;
-} | null;
 
 type PaymentCallout = {
   key: string;
@@ -718,35 +714,6 @@ export default function SaleScreen() {
   );
 }
 
-function FeedbackBanner({
-  feedback,
-  successColor,
-  errorColor,
-  infoColor,
-  surfaceColor,
-  textColor,
-}: {
-  feedback: FeedbackState;
-  successColor: string;
-  errorColor: string;
-  infoColor: string;
-  surfaceColor: string;
-  textColor: string;
-}) {
-  if (!feedback) return null;
-  const accentColor =
-    feedback.type === 'success'
-      ? successColor
-      : feedback.type === 'error'
-        ? errorColor
-        : infoColor;
-  return (
-    <View style={[styles.feedbackBanner, { borderLeftColor: accentColor, backgroundColor: surfaceColor }]}>
-      <Text style={[styles.feedbackText, { color: textColor }]}>{feedback.message}</Text>
-    </View>
-  );
-}
-
 function PaymentCalloutCard({
   callout,
   themeColors,
@@ -976,17 +943,6 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingHorizontal: 20,
     paddingTop: 16,
-  },
-  feedbackBanner: {
-    borderRadius: 12,
-    borderLeftWidth: 4,
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    marginBottom: 16,
-  },
-  feedbackText: {
-    fontSize: 14,
-    fontWeight: '500',
   },
   calloutList: {
     gap: 12,

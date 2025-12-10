@@ -559,6 +559,7 @@ export default function SettingsScreen() {
         feedback={feedback}
         successColor={theme.colors.success}
         errorColor={theme.colors.error}
+        infoColor={theme.colors.primary}
         surfaceColor={theme.colors.surface}
         textColor={theme.colors.textPrimary}
       />

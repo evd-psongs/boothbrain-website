@@ -17,7 +17,7 @@ import * as ImagePicker from 'expo-image-picker';
 
 import { useTheme } from '@/providers/ThemeProvider';
 import { useSupabaseAuth } from '@/providers/SupabaseAuthProvider';
-import { KeyboardDismissibleView } from '@/components/common';
+import { KeyboardDismissibleView, FeedbackBanner, type FeedbackState } from '@/components/common';
 import { useSession } from '@/providers/SessionProvider';
 import { useInventory } from '@/hooks/useInventory';
 import { useEventStagedInventory } from '@/hooks/useEventStagedInventory';
@@ -34,11 +34,6 @@ import type { EventStagedInventoryItem } from '@/types/inventory';
 import { FREE_PLAN_ITEM_LIMIT } from '@/lib/freePlanLimits';
 
 type FormMode = 'inventory' | 'stage' | 'convert';
-
-type FeedbackState = {
-  type: 'success' | 'error' | 'info';
-  message: string;
-} | null;
 
 type FormState = {
   name: string;
@@ -704,7 +699,16 @@ export default function ItemFormScreen() {
             </Pressable>
           </View>
 
-          {feedback ? <FeedbackBanner feedback={feedback} colors={theme.colors} /> : null}
+          {feedback ? (
+            <FeedbackBanner
+              feedback={feedback}
+              successColor={theme.colors.success}
+              errorColor={theme.colors.error}
+              infoColor={theme.colors.primary}
+              surfaceColor={theme.colors.surface}
+              textColor={theme.colors.textPrimary}
+            />
+          ) : null}
 
           {showPlanNotice ? (
             <View
@@ -881,29 +885,6 @@ export default function ItemFormScreen() {
   );
 }
 
-function FeedbackBanner({
-  feedback,
-  colors,
-}: {
-  feedback: FeedbackState;
-  colors: ReturnType<typeof useTheme>['theme']['colors'];
-}) {
-  if (!feedback) return null;
-
-  const accentColor =
-    feedback.type === 'success'
-      ? colors.success
-      : feedback.type === 'error'
-      ? colors.error
-      : colors.primary;
-
-  return (
-    <View style={[styles.feedbackBanner, { borderLeftColor: accentColor, backgroundColor: colors.surface }]}>
-      <Text style={[styles.feedbackText, { color: colors.textPrimary }]}>{feedback.message}</Text>
-    </View>
-  );
-}
-
 function FormField({
   label,
   value,
@@ -990,17 +971,6 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     fontSize: 20,
     fontWeight: '700',
-  },
-  feedbackBanner: {
-    borderLeftWidth: 4,
-    borderRadius: 12,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-  },
-  feedbackText: {
-    fontSize: 14,
-    fontWeight: '500',
-    textAlign: 'center',
   },
   notice: {
     flexDirection: 'row',

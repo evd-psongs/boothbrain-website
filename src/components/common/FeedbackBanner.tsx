@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { Text, Animated, StyleSheet } from 'react-native';
 
 export type FeedbackState = {
-  type: 'success' | 'error';
+  type: 'success' | 'error' | 'info';
   message: string;
 } | null;
 
@@ -10,6 +10,7 @@ interface FeedbackBannerProps {
   feedback: FeedbackState;
   successColor: string;
   errorColor: string;
+  infoColor?: string;
   surfaceColor: string;
   textColor: string;
 }
@@ -35,6 +36,7 @@ export function FeedbackBanner({
   feedback,
   successColor,
   errorColor,
+  infoColor,
   surfaceColor,
   textColor,
 }: FeedbackBannerProps) {
@@ -85,8 +87,12 @@ export function FeedbackBanner({
 
   if (!currentFeedback) return null;
 
-  const isSuccess = currentFeedback.type === 'success';
-  const accentColor = isSuccess ? successColor : errorColor;
+  const accentColor =
+    currentFeedback.type === 'success'
+      ? successColor
+      : currentFeedback.type === 'error'
+        ? errorColor
+        : (infoColor ?? errorColor);
 
   return (
     <Animated.View

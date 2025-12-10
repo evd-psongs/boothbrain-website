@@ -15,17 +15,13 @@ import { Feather } from '@expo/vector-icons';
 import { useTheme } from '@/providers/ThemeProvider';
 import { useSupabaseAuth } from '@/providers/SupabaseAuthProvider';
 import { useSession } from '@/providers/SessionProvider';
+import { FeedbackBanner, type FeedbackState } from '@/components/common';
 import { useOrders } from '@/hooks/useOrders';
 import type { Order } from '@/types/orders';
 import { updateOrderStatus } from '@/lib/orders';
 import { formatCurrencyFromCents } from '@/utils/currency';
 import { formatTimeAgo } from '@/utils/dates';
 import { formatPaymentLabel, getPaymentVisuals } from '@/utils/payment';
-
-type FeedbackState = {
-  type: 'success' | 'error' | 'info';
-  message: string;
-} | null;
 
 export default function OrdersScreen() {
   const { theme } = useTheme();
@@ -337,8 +333,8 @@ export default function OrdersScreen() {
           <FeedbackBanner
             feedback={feedback}
             successColor={theme.colors.success}
-            infoColor={theme.colors.primary}
             errorColor={theme.colors.error}
+            infoColor={theme.colors.primary}
             surfaceColor={theme.colors.surface}
             textColor={theme.colors.textPrimary}
           />
@@ -647,43 +643,3 @@ const styles = StyleSheet.create({
     lineHeight: 20,
   },
 });
-
-function FeedbackBanner({
-  feedback,
-  successColor,
-  infoColor,
-  errorColor,
-  surfaceColor,
-  textColor,
-}: {
-  feedback: FeedbackState;
-  successColor: string;
-  infoColor: string;
-  errorColor: string;
-  surfaceColor: string;
-  textColor: string;
-}) {
-  if (!feedback) return null;
-
-  const accentColor =
-    feedback.type === 'success'
-      ? successColor
-      : feedback.type === 'error'
-        ? errorColor
-        : infoColor;
-
-  return (
-    <View
-      style={{
-        borderLeftWidth: 4,
-        borderRadius: 12,
-        paddingVertical: 12,
-        paddingHorizontal: 16,
-        borderLeftColor: accentColor,
-        backgroundColor: surfaceColor,
-      }}
-    >
-      <Text style={{ fontSize: 14, fontWeight: '500', color: textColor }}>{feedback.message}</Text>
-    </View>
-  );
-}
