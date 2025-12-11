@@ -1,6 +1,6 @@
 # CLAUDE.md - BoothBrain Development Guide
 
-**Last Updated:** 2025-12-10
+**Last Updated:** 2025-12-11
 
 ## Project Overview
 BoothBrain is an Expo React Native app for managing vendor booth inventory and sales.
@@ -14,7 +14,6 @@ Core functionality complete. Focus on UI polish, testing, and preparing for App 
 **Key Documents:**
 - `/docs/BUILD_CHEATSHEET.md` - All build commands and workflows
 - `/docs/FINAL_CHECKLIST.md` - Complete App Store submission guide
-- `/docs/REVENUECAT_WEBHOOK_DEPLOYMENT.md` - Webhook deployment (next step)
 - `/docs/PRIVACY_POLICY.md`, `/docs/TERMS_OF_SERVICE.md` - Legal docs
 - `/docs/archive/SESSION_HISTORY.md` - Detailed session logs archive
 
@@ -50,8 +49,8 @@ Core functionality complete. Focus on UI polish, testing, and preparing for App 
 - `test-branch` - Development/testing
 
 **Current Status:**
-- `master` at commit `75f5819` (2025-12-10)
-- All changes pushed to origin/master
+- `master` at commit `e6d0102` (2025-12-11)
+- 2 commits ahead of origin (pending push)
 - Clean working tree
 
 **Quick Commands:**
@@ -64,34 +63,29 @@ npm start -- --clear       # Clear Metro cache if needed
 
 ---
 
-## Current Session (2025-12-10 - Code Consolidation & Cleanup)
+## Current Session (2025-12-11 - RevenueCat Webhook Deployment)
 
 ### What Was Accomplished:
 
-#### 1. **FeedbackBanner Consolidation** ✅
-- **Problem:** 5 duplicate implementations of FeedbackBanner (1 shared + 4 local copies)
-- **Solution:** Consolidated to single shared component in `@/components/common`
+#### 1. **RevenueCat Webhook Deployed** ✅
+- **What:** Server-side subscription sync via Supabase Edge Function
+- **Why:** Keeps database accurate even when app is closed (renewals, cancellations, trial expirations)
 - **Changes:**
-  - Removed local FeedbackBanner functions from 4 screens (inventory, orders, sale, item-form)
-  - Added `'info'` type support to shared FeedbackState (was only success/error)
-  - Added optional `infoColor` prop to FeedbackBanner component
-  - All toasts now use consistent animations and styling
-- **Result:** Removed ~156 lines of duplicate code
+  - Added `config.toml` to disable JWT verification (allows RevenueCat to POST without auth)
+  - Deployed function to: `https://vosnpecghhfinofsqcpv.supabase.co/functions/v1/revenuecat-webhook`
+  - Configured in RevenueCat dashboard for all events (INITIAL_PURCHASE, RENEWAL, CANCELLATION, etc.)
+  - Tested successfully: Webhook receives events and processes them
+- **Result:** Production-ready subscription sync infrastructure
 
-#### 2. **Dead Code Cleanup** ✅
-- **Problem:** Unused exports in `src/utils/networkCheck.ts`
-- **Solution:** Removed dead code that was never imported
-- **Removed:**
-  - `delay()` - duplicate of `asyncHelpers.delay()`
-  - `isTimeoutError()` - never used anywhere
-- **Result:** Removed 13 lines of dead code, cleaner utility file
+### Key Commits (2025-12-11):
+- `e6d0102` - Deploy: Add RevenueCat webhook config to disable JWT verification
+- `c37a0d2` - Docs: Update CLAUDE.md - Polish Phase & completed consolidation
 
-### Key Commits (2025-12-10):
-- `31f6182` - Refactor: Consolidate FeedbackBanner to shared component (-156 lines)
-- `75f5819` - Cleanup: Remove dead code from networkCheck.ts (-13 lines)
+### Previous Session (2025-12-10):
+- `31f6182` - FeedbackBanner consolidation (-156 lines)
+- `75f5819` - Dead code cleanup (-13 lines)
 
-### Previous Session Work:
-For details on earlier 2025-12-10 work (subscription pause removal, performance optimizations, UI spacing, toast redesign), see `/docs/archive/SESSION_HISTORY.md`
+For detailed session history, see `/docs/archive/SESSION_HISTORY.md`
 
 ---
 
@@ -147,13 +141,7 @@ For details on earlier 2025-12-10 work (subscription pause removal, performance 
 - [ ] No placeholder text or TODOs in production
 - [ ] App icon & splash screen final
 - [ ] Version number & build number correct
-- [ ] RevenueCat webhook deployed (see `/docs/REVENUECAT_WEBHOOK_DEPLOYMENT.md`)
-
-### Known Pre-Launch Items
-- ⚠️ **RevenueCat Webhook:** Not yet deployed (required for production subscription sync)
-  - See `/docs/REVENUECAT_WEBHOOK_DEPLOYMENT.md` for deployment steps
-  - Currently using polling only (works but less efficient)
-  - Deploy before launch for real-time subscription updates
+- [x] RevenueCat webhook deployed ✅
 
 ---
 
@@ -237,52 +225,6 @@ These providers are interconnected - changes require extra care:
 
 ---
 
-## Coding Standards
-
-### Single Responsibility
-```typescript
-// ❌ BAD: Multiple responsibilities
-export function SettingsScreen() {
-  // Profile, password, payment, subscription, session management...
-}
-
-// ✅ GOOD: Single purpose
-export function ProfileSection() {
-  // Only profile updates
-}
-```
-
-### Type Safety
-```typescript
-// ✅ DO: Use typed database interfaces
-const sessionRow = data as SessionRow;
-
-// ❌ DON'T: Use any
-const sessionRow = data as any;
-
-// ✅ DO: Use error helpers
-catch (err) {
-  const message = getErrorMessage(err);
-}
-
-// ❌ DON'T: Access error properties directly
-catch (err: any) {
-  const message = err.message;
-}
-```
-
-### Utility Function Usage
-```typescript
-// ✅ DO: Import from centralized utilities
-import { formatEventRange } from '@/utils/dates';
-import { formatPaymentLabel } from '@/utils/payment';
-
-// ❌ DON'T: Duplicate formatting logic
-const formattedDate = `${start} - ${end}`; // formatEventRange already exists!
-```
-
----
-
 ## Known Issues & Limitations
 
 ### Current Limitations:
@@ -300,46 +242,9 @@ const formattedDate = `${start} - ${end}`; // formatEventRange already exists!
 - **Persistence:** Sessions survive app restarts (within 30 min window)
 - **Code reuse:** Session codes expire after 30 minutes
 
-### Recent Fixes (All Working):
-- ✅ Post-purchase infinite loading (removed duplicate sync, single source of truth)
-- ✅ Session join function (join_session_secure alias added)
-- ✅ RevenueCat initialization (now works on all session restore paths)
-- ✅ Session approval flow (users properly wait for host approval)
-- ✅ Toast positioning (centered, avoids Dynamic Island)
-- ✅ 2FA modal UI (shield icon, cursor position)
-- ✅ User deletion (CASCADE constraints enable clean deletion)
-
----
-
-## Regression Prevention
-
-### Breaking Changes - NEVER DO THIS:
-- ❌ Change database column names without comprehensive type updates
-- ❌ Modify context provider value shapes without updating all consumers
-- ❌ Remove utility functions without checking all usages first
-- ❌ Add `any` types to bypass TypeScript errors
-- ❌ Skip loading states for async operations
-- ❌ Remove error handling from existing code
-
-### Safe Change Patterns:
-- ✅ Add new database functions (don't modify existing)
-- ✅ Add optional props to components (backward compatible)
-- ✅ Add validation (doesn't break existing data)
-- ✅ Fix bugs (makes things MORE reliable)
-- ✅ Extract components (improves organization)
-
 ---
 
 ## Development Workflow
-
-### Adding a New Feature:
-1. **Plan:** Identify affected files and integration points
-2. **Check:** Review existing utilities to reuse
-3. **Implement:** Follow type safety and file size guidelines
-4. **Verify:** Run `npm run typecheck` and `npm run lint`
-5. **Test:** Complete manual testing checklist
-6. **Update:** Update CLAUDE.md if architectural changes made
-7. **Commit:** Use descriptive commit messages
 
 ### Build Commands:
 ```bash
