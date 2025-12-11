@@ -5,6 +5,9 @@
 ## Project Overview
 BoothBrain is an Expo React Native app for managing vendor booth inventory and sales.
 
+**Current Phase:** 🎨 **Polish & Pre-App Store Review**
+Core functionality complete. Focus on UI polish, testing, and preparing for App Store submission.
+
 ## Documentation 📚
 **Quick Start:** See `/docs/INDEX.md` for complete documentation catalog
 
@@ -47,8 +50,8 @@ BoothBrain is an Expo React Native app for managing vendor booth inventory and s
 - `test-branch` - Development/testing
 
 **Current Status:**
-- Both `test-branch` and `master` at commit `b7dac7f` (2025-12-10)
-- All branches synced and pushed to origin/master
+- `master` at commit `75f5819` (2025-12-10)
+- All changes pushed to origin/master
 - Clean working tree
 
 **Quick Commands:**
@@ -61,91 +64,96 @@ npm start -- --clear       # Clear Metro cache if needed
 
 ---
 
-## Current Session (2025-12-10 - UI Improvements & Code Cleanup)
+## Current Session (2025-12-10 - Code Consolidation & Cleanup)
 
 ### What Was Accomplished:
 
-#### 1. **Subscription Pause Feature Removed** ✅
-- Apple IAP doesn't support user-initiated subscription pauses
-- Removed all pause UI, logic, types, and utility files
-- Users can cancel subscriptions via iOS Settings (standard Apple flow)
-- **Files removed:** `src/lib/subscriptions.ts`, `src/utils/subscriptionPause.ts`, `src/utils/pauseErrors.ts`, tests
-- **Types updated:** Removed `pausedAt`, `pauseAllowanceUsed` from Subscription type
-
-#### 2. **Performance Optimizations** ✅
-- **Fix #1:** Eliminated duplicate `buildAuthUser` call on iOS auth state change
-  - Tracked with `userAlreadyRefreshed` flag to skip redundant network calls
-  - Saves one profile + subscription fetch per login
-- **Fix #2:** Skip redundant subscription sync on `INITIAL_SESSION` event
-  - Only sync on `SIGNED_IN`, `TOKEN_REFRESHED`, `USER_UPDATED` events
-  - Reduces unnecessary RevenueCat API calls on app startup
-- **Fix #3:** Skip database writes when subscription data unchanged
-  - Compare incoming data with existing record before updating
-  - Reduces Supabase API usage and database load
-
-#### 3. **UI Spacing Improvements** ✅
-- Increased Settings screen card gap from 16px to 24px
-- Added 12px spacing before "Save payment links" button
-- Added 12px top margin to notice boxes (e.g., iOS Settings notice)
-
-#### 4. **Toast Notification Redesign** ✅
-- Replaced solid green/red background with subtle accent border design
-- New design: Surface background + 4px colored left border + primary text color
-- More modern, less "shouty" appearance
-- Works great in both light and dark modes
-
-#### 5. **FeedbackBanner Consolidation** ⚠️ **IN PROGRESS**
+#### 1. **FeedbackBanner Consolidation** ✅
 - **Problem:** 5 duplicate implementations of FeedbackBanner (1 shared + 4 local copies)
-- **Goal:** Delete local copies, use shared component from `@/components/common`
-- **Status:** 3 of 4 completed (item-form.tsx ✅, sale.tsx ✅, orders.tsx ✅)
-- **Remaining:** inventory.tsx (partially done, needs completion)
+- **Solution:** Consolidated to single shared component in `@/components/common`
+- **Changes:**
+  - Removed local FeedbackBanner functions from 4 screens (inventory, orders, sale, item-form)
+  - Added `'info'` type support to shared FeedbackState (was only success/error)
+  - Added optional `infoColor` prop to FeedbackBanner component
+  - All toasts now use consistent animations and styling
+- **Result:** Removed ~156 lines of duplicate code
 
-### In Progress - FeedbackBanner Consolidation:
-
-**What's Left:**
-1. Finish updating `app/(tabs)/inventory.tsx`:
-   - Remove `infoColor` prop from usage (line 532)
-   - Remove local FeedbackBanner function (starts around line 854)
-   - Remove feedbackBanner & feedbackText styles
-2. Run `npm run typecheck` to verify
-3. Commit all changes
-
-**Current State:**
-- Import already added: `import { FeedbackBanner, type FeedbackState } from '@/components/common'`
-- Local FeedbackState type already removed
-- Usage still has `infoColor={theme.colors.primary}` that needs removing
-- Local function still exists
-
-**To Complete:**
-```typescript
-// Remove infoColor from usage (around line 532):
-<FeedbackBanner
-  feedback={feedback}
-  successColor={theme.colors.success}
-  errorColor={theme.colors.error}
-  // DELETE THIS LINE: infoColor={theme.colors.primary}
-  surfaceColor={theme.colors.surface}
-  textColor={theme.colors.textPrimary}
-/>
-
-// Delete entire local FeedbackBanner function (around line 854-882)
-// Delete feedbackBanner and feedbackText styles from StyleSheet
-```
-
-**Benefits After Completion:**
-- ~100 lines of duplicate code removed
-- All toasts animated consistently (shared component has animations)
-- Single source of truth for future toast changes
+#### 2. **Dead Code Cleanup** ✅
+- **Problem:** Unused exports in `src/utils/networkCheck.ts`
+- **Solution:** Removed dead code that was never imported
+- **Removed:**
+  - `delay()` - duplicate of `asyncHelpers.delay()`
+  - `isTimeoutError()` - never used anywhere
+- **Result:** Removed 13 lines of dead code, cleaner utility file
 
 ### Key Commits (2025-12-10):
-- `5721296` - Remove: Subscription pause feature (not supported by Apple IAP)
-- `bcae93b` - Perf: Skip database writes when subscription data unchanged
-- `4590dab` - UI: Increase spacing between Settings screen cards
-- `b529b16` - UI: Add spacing between Remove QR code and Save payment links buttons
-- `a77740c` - UI: Add spacing between Refresh button and iOS Settings notice
-- `b7dac7f` - UI: Redesign toast notifications with subtle accent border design
+- `31f6182` - Refactor: Consolidate FeedbackBanner to shared component (-156 lines)
+- `75f5819` - Cleanup: Remove dead code from networkCheck.ts (-13 lines)
 
-**Note:** Previous session details (2025-12-09 post-purchase fix, 2025-12-07 RevenueCat integration) moved to `/docs/archive/SESSION_HISTORY.md`
+### Previous Session Work:
+For details on earlier 2025-12-10 work (subscription pause removal, performance optimizations, UI spacing, toast redesign), see `/docs/archive/SESSION_HISTORY.md`
+
+---
+
+## Polish Phase - Pre-App Store Review
+
+### App Status
+**Core Features:** ✅ Complete
+- Auth & 2FA enrollment
+- Session management (create/join/host)
+- Inventory management (CRUD, CSV import/export, staging)
+- Sales & checkout (cart, discounts, tax, payment methods)
+- Orders & reporting
+- Events & task management
+- Pro subscriptions (RevenueCat + Apple IAP)
+
+**Code Quality:** ✅ Excellent
+- Zero TypeScript errors
+- Zero ESLint errors
+- No duplicate code (recent consolidation)
+- All files within size limits
+- Proper error handling throughout
+
+### Pre-Submission Focus Areas
+
+#### 1. **Testing on Real Devices**
+- [ ] Test on physical iPhone (not just Expo Go)
+- [ ] Test in TestFlight build (production-like environment)
+- [ ] Verify 2FA works in production build
+- [ ] Test all purchase flows in sandbox
+- [ ] Test session flows (create, join, approve, end)
+- [ ] Test offline behavior / poor network conditions
+
+#### 2. **UI Polish**
+- [ ] Review loading states (consistent spinners)
+- [ ] Review error messages (user-friendly copy)
+- [ ] Review empty states (helpful messaging)
+- [ ] Consider haptic feedback on key actions
+- [ ] Verify Dark Mode appearance across all screens
+- [ ] Check Dynamic Island safe areas
+
+#### 3. **App Store Requirements**
+- [ ] App screenshots (multiple device sizes)
+- [ ] App description & keywords
+- [ ] Privacy policy URL configured
+- [ ] Terms of service URL configured
+- [ ] App categories selected
+- [ ] Age rating completed
+- [ ] Review notes prepared (test accounts, special instructions)
+
+#### 4. **Final Checks**
+- [ ] All legal docs accessible in-app (Settings)
+- [ ] Privacy policy & terms match actual app behavior
+- [ ] No placeholder text or TODOs in production
+- [ ] App icon & splash screen final
+- [ ] Version number & build number correct
+- [ ] RevenueCat webhook deployed (see `/docs/REVENUECAT_WEBHOOK_DEPLOYMENT.md`)
+
+### Known Pre-Launch Items
+- ⚠️ **RevenueCat Webhook:** Not yet deployed (required for production subscription sync)
+  - See `/docs/REVENUECAT_WEBHOOK_DEPLOYMENT.md` for deployment steps
+  - Currently using polling only (works but less efficient)
+  - Deploy before launch for real-time subscription updates
 
 ---
 
