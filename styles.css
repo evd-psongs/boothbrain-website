@@ -414,6 +414,7 @@ footer {
     align-items: center;
     justify-content: center;
     background-color: inherit;
+    color: #fff;
     opacity: 0;
     transform: translateY(100%);
     transition: transform 0.3s ease, opacity 0.3s ease;
