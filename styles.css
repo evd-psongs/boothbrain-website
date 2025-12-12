@@ -397,6 +397,37 @@ footer {
     font-size: 1.1rem;
 }
 
+/* Coming Soon Button Animation */
+.coming-soon-btn {
+    position: relative;
+    overflow: hidden;
+}
+
+.coming-soon-btn::before {
+    content: attr(data-hover);
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background-color: inherit;
+    opacity: 0;
+    transform: translateY(100%);
+    transition: transform 0.3s ease, opacity 0.3s ease;
+}
+
+.coming-soon-btn:hover::before {
+    opacity: 1;
+    transform: translateY(0);
+}
+
+.coming-soon-btn:hover {
+    color: transparent;
+}
+
 /* Responsive Design */
 @media (max-width: 768px) {
     .hero h2 {
