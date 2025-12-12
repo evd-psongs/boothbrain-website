@@ -30,6 +30,36 @@ export async function syncSubscriptionToSupabase(
 
     if (!proEntitlement) {
       console.log('[SubscriptionSync] No active Pro entitlement found');
+
+      // Cancel any existing active subscriptions since RevenueCat says no active entitlement
+      const { data: existingSubscriptions } = await supabase
+        .from('subscriptions')
+        .select('id, status')
+        .eq('user_id', userId)
+        .eq('payment_platform', 'apple')
+        .in('status', ['active', 'trialing']);
+
+      if (existingSubscriptions && existingSubscriptions.length > 0) {
+        console.log('[SubscriptionSync] Canceling expired subscriptions:', existingSubscriptions.length);
+
+        const { error: cancelError } = await supabase
+          .from('subscriptions')
+          .update({
+            status: 'canceled',
+            canceled_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          })
+          .eq('user_id', userId)
+          .eq('payment_platform', 'apple')
+          .in('status', ['active', 'trialing']);
+
+        if (cancelError) {
+          console.error('[SubscriptionSync] Failed to cancel subscriptions:', cancelError);
+        } else {
+          console.log('[SubscriptionSync] Successfully canceled expired subscriptions');
+        }
+      }
+
       return;
     }
 
